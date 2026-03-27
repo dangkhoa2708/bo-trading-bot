@@ -21,10 +21,14 @@ export type PredStats = {
 };
 
 export type BacktestEmittedRow = {
+  /** Signal candle open (ms); matches pending resolution. */
+  fromOpenTime: number;
   time: string;
   signal: string;
   setup: string;
   reason: string;
+  /** Filled when the next candle closed; omitted if replay ended before resolve. */
+  predictionResult?: "RIGHT" | "WRONG";
 };
 
 export type BacktestResult = {
@@ -129,6 +133,13 @@ export async function runBacktest(): Promise<BacktestResult | BacktestError> {
             : "FLAT";
       const status = actual === expected ? "RIGHT" : "WRONG";
 
+      const row = rows.find(
+        (r) => r.fromOpenTime === pendingPrediction!.fromOpenTime,
+      );
+      if (row) {
+        row.predictionResult = status;
+      }
+
       if (
         pendingPrediction.fromOpenTime >= windowStartMs &&
         pendingPrediction.fromOpenTime <= endMs
@@ -176,6 +187,7 @@ export async function runBacktest(): Promise<BacktestResult | BacktestError> {
 
     const signalId = `${c.openTime}-${result.signal}-${result.setup}`;
     rows.push({
+      fromOpenTime: c.openTime,
       time: fmtGmt7(c.openTime),
       signal: result.signal,
       setup: result.setup,

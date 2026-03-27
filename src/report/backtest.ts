@@ -19,11 +19,16 @@ export function buildBacktestReportHtml(r: BacktestResult): string {
     detailRows.length > 0
       ? [
           "",
-          "🧾 <b>Emitted signals</b> <i>(newest last, capped)</i>",
-          ...detailRows.map(
-            (row) =>
-              `• <code>${escapeHtml(row.time)}</code> <b>${escapeHtml(row.signal)}</b> ${escapeHtml(row.setup)} — <i>${escapeHtml(row.reason)}</i>`,
-          ),
+          "🧾 <b>Emitted signals</b> <i>(✅/❌ next-candle prediction, ⏳ pending — newest last, capped)</i>",
+          ...detailRows.map((row) => {
+            const pred =
+              row.predictionResult === "RIGHT"
+                ? "✅"
+                : row.predictionResult === "WRONG"
+                  ? "❌"
+                  : "⏳";
+            return `• ${pred} <code>${escapeHtml(row.time)}</code> <b>${escapeHtml(row.signal)}</b> ${escapeHtml(row.setup)} — <i>${escapeHtml(row.reason)}</i>`;
+          }),
           r.rows.length > MAX_DETAIL_ROWS
             ? `<i>… ${r.rows.length - MAX_DETAIL_ROWS} older row(s) omitted</i>`
             : "",
