@@ -29,7 +29,9 @@ async function main(): Promise<void> {
   await logRuntime(
     `[main] ${config.symbol} ${config.interval} — buffer ${config.candleBuffer} — dryRun=${config.dryRun}`,
   );
-  await startTelegramCommandListener();
+  void startTelegramCommandListener().catch((e) => {
+    console.error("[telegram] command listener failed to start", e);
+  });
 
   try {
     const hist = await fetchKlines(
