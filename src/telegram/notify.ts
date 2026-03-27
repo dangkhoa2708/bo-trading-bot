@@ -12,6 +12,7 @@ import {
   buildWeeklyReportText,
 } from "../report/weekly.js";
 import { getStatusSnapshot } from "../runtime/status.js";
+import { buildChartTestTelegramPayload } from "../logging/verify.js";
 
 /** Inline keyboard: toggle per-signal details (Telegram has no native expand/collapse). */
 function reportDetailsKeyboard(kind: "d" | "w", expanded: boolean) {
@@ -50,7 +51,10 @@ function getBot(): Telegraf {
 
 export async function sendTelegramText(
   text: string,
-  options?: { parseMode?: "HTML" | "MarkdownV2" },
+  options?: {
+    parseMode?: "HTML" | "MarkdownV2";
+    replyMarkup?: { inline_keyboard: Array<Array<{ text: string; url: string }>> };
+  },
 ): Promise<void> {
   if (!config.telegramBotToken || !config.telegramChatId) {
     console.warn("[telegram] missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID");
@@ -58,10 +62,14 @@ export async function sendTelegramText(
   }
   if (config.dryRun) {
     console.log("[dry-run] telegram:", text);
+    if (options?.replyMarkup) {
+      console.log("[dry-run] telegram reply_markup:", JSON.stringify(options.replyMarkup));
+    }
     return;
   }
   await getBot().telegram.sendMessage(config.telegramChatId, text, {
     parse_mode: options?.parseMode,
+    reply_markup: options?.replyMarkup,
   });
 }
 
@@ -120,6 +128,18 @@ export async function startTelegramCommandListener(): Promise<void> {
       parse_mode: "HTML",
       reply_markup: hasDetails ? reportDetailsKeyboard("w", false) : undefined,
     });
+  });
+  b.command("chart", async (ctx) => {
+    const chatId = String(ctx.chat?.id ?? "");
+    if (chatId !== config.telegramChatId) {
+      await ctx.reply("Unauthorized chat for this bot instance.");
+      return;
+    }
+    const { text, replyMarkup } = buildChartTestTelegramPayload(
+      config.symbol,
+      config.interval,
+    );
+    await ctx.reply(text, { parse_mode: "HTML", reply_markup: replyMarkup });
   });
   b.on("callback_query", async (ctx) => {
     const cq = ctx.callbackQuery;

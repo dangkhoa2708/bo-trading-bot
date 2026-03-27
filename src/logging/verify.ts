@@ -1,4 +1,5 @@
 import type { Candle, StrategyResult } from "../types.js";
+import { signalChartLinks, type SignalChartLinks } from "../chart/externalLinks.js";
 import {
   candleColor,
   candleStrength,
@@ -74,9 +75,21 @@ export function formatSignalTelegramLog(
   c: Candle,
   result: StrategyResult,
   signalId: string,
+  charts?: Pick<SignalChartLinks, "tradingViewUrl" | "binanceTradeUrl">,
 ): string {
   const icon = result.signal === "UP" ? "🟢" : result.signal === "DOWN" ? "🔴" : "⚪️";
   const timeText = fmtGmt7(c.openTime);
+  const chartLines: string[] =
+    charts !== undefined
+      ? [
+          "",
+          "📊 <b>Live chart</b> — tap links or buttons below <i>(opens in Telegram browser)</i>",
+          `• <a href="${escapeHtml(charts.tradingViewUrl)}">TradingView</a> <i>(${escapeHtml(pair)} / chart)</i>`,
+          `• <a href="${escapeHtml(charts.binanceTradeUrl)}">Binance</a>`,
+          // Naked URLs help some clients show a link preview card.
+          charts.tradingViewUrl,
+        ]
+      : [];
   return [
     `${icon} <b>Signal</b> <code>${escapeHtml(result.signal)}</code> <b>${escapeHtml(result.setup)}</b>  <code>${escapeHtml(signalId)}</code>`,
     `<b>Pair</b>: <code>${escapeHtml(pair)}</code>`,
@@ -84,9 +97,29 @@ export function formatSignalTelegramLog(
     `<b>Price</b>: <code>${fmtPrice(c.close)}</code>`,
     `<b>ID</b>: <code>${escapeHtml(signalId)}</code>`,
     `<b>Reason</b>: <i>${escapeHtml(result.reason)}</i>`,
+    ...chartLines,
     "",
     `${drawTelegramVerticalCandle(c)}`,
   ].join("\n");
+}
+
+/** Payload for <code>/chart</code> — same links as signal alerts. */
+export function buildChartTestTelegramPayload(
+  pair: string,
+  interval: string,
+): { text: string; replyMarkup: SignalChartLinks["replyMarkup"] } {
+  const links = signalChartLinks(pair, interval);
+  const text = [
+    "🧪 <b>Chart links (test)</b>",
+    `<b>Pair</b>: <code>${escapeHtml(pair)}</code>  <b>Interval</b>: <code>${escapeHtml(interval)}</code>`,
+    "",
+    "Same TradingView / Binance URLs as signal alerts. Use <code>/chart</code> to verify buttons and previews.",
+    "",
+    `📊 <a href="${escapeHtml(links.tradingViewUrl)}">TradingView</a>`,
+    `📈 <a href="${escapeHtml(links.binanceTradeUrl)}">Binance</a>`,
+    links.tradingViewUrl,
+  ].join("\n");
+  return { text, replyMarkup: links.replyMarkup };
 }
 
 export function formatPrePredictionTelegramLog(args: {
