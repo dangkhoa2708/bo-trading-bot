@@ -26,6 +26,13 @@ Backtest showed **Mirror** does better when **same-direction dedupe** applies (o
 
 Implemented via `usesStrictDirectionDedupe(setup)` in `src/signal/dispatcher.ts` (backtest uses the same dispatcher).
 
+## Human review (pre-prediction)
+
+- After each emitted signal, the **pre-prediction** Telegram message includes **My pick: UP / DOWN** inline buttons.
+- If you tap a button before the **next** candle closes, that choice is stored (`src/prediction/humanPick.ts`) and used to score **RIGHT/WRONG** vs the next candle (baseline vs next close). If you do not tap, scoring falls back to the **bot** direction.
+- **Post-prediction** and `logs/predictions.jsonl` always record **both** `botExpected` and `humanPick` (or null), plus `expected` (the direction actually used for the score).
+- **Daily / weekly Telegram reports** split totals into **Bot prediction** (every resolved row vs bot direction) and **My picks** (only rows where you tapped a button), each with overall and per-setup counts.
+
 ## Skip Rules (No Trade / No Signal)
 
 - Choppy: last `CHOP_LOOKBACK` candles alternate color

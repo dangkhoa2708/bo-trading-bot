@@ -1,6 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fmtGmt7, gmt7DateKey } from "../time/utils.js";
+import {
+  buildDualPredictionStats,
+  scoreRowVsBot,
+  scoreRowVsMyPick,
+  type DualPredictionSection,
+} from "./predictionStats.js";
 
 type SignalRow = {
   signalId?: string;
@@ -19,16 +25,11 @@ type PredictionRow = {
   baselineClose: number;
   nextClose: number;
   expected: "UP" | "DOWN" | string;
+  botExpected?: "UP" | "DOWN";
+  humanPick?: "UP" | "DOWN" | null;
   actual: "UP" | "DOWN" | "FLAT" | string;
   result: "RIGHT" | "WRONG" | string;
   setup?: string;
-};
-
-type PredStats = {
-  total: number;
-  right: number;
-  wrong: number;
-  winRatePct: number;
 };
 
 type DetailItem = {
@@ -41,7 +42,10 @@ type DetailItem = {
   setup: string;
   reason: string;
   prediction: string;
+  /** Stored score (human if set, else bot). */
   result: string;
+  resultVsBot: string;
+  resultVsMyPick: string;
   baselineClose: number | null;
   nextClose: number | null;
 };
@@ -53,11 +57,10 @@ type DailyReportData = {
   up: number;
   down: number;
   setups: string;
-  predictionTotal: number;
-  right: number;
-  wrong: number;
-  winRatePct: number;
-  predictionBySetup: Record<"Momentum" | "Exhaustion" | "Mirror" | "Other", PredStats>;
+  /** Next-candle scores vs bot direction only. */
+  botPrediction: DualPredictionSection;
+  /** Next-candle scores vs your Telegram pick (recorded picks only). */
+  myPicks: DualPredictionSection;
   details: DetailItem[];
 };
 
@@ -94,6 +97,19 @@ function buildDailyReportData(): DailyReportData {
   const signalFile = path.join(process.cwd(), "logs", "signals.jsonl");
   const predictionFile = path.join(process.cwd(), "logs", "predictions.jsonl");
   const today = todayKeyGmt7();
+  const emptySection = (): DualPredictionSection => ({
+    total: 0,
+    right: 0,
+    wrong: 0,
+    winRatePct: 0,
+    bySetup: {
+      Momentum: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
+      Exhaustion: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
+      Mirror: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
+      Other: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
+    },
+  });
+
   if (!fs.existsSync(signalFile) && !fs.existsSync(predictionFile)) {
     return {
       hasLogs: false,
@@ -102,16 +118,8 @@ function buildDailyReportData(): DailyReportData {
       up: 0,
       down: 0,
       setups: "-",
-      predictionTotal: 0,
-      right: 0,
-      wrong: 0,
-      winRatePct: 0,
-      predictionBySetup: {
-        Momentum: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
-        Exhaustion: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
-        Mirror: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
-        Other: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
-      },
+      botPrediction: emptySection(),
+      myPicks: emptySection(),
       details: [],
     };
   }
@@ -125,13 +133,6 @@ function buildDailyReportData(): DailyReportData {
   for (const r of todaySignals) {
     bySetup.set(r.setup, (bySetup.get(r.setup) ?? 0) + 1);
   }
-  const predRight = todayPredictions.filter((r) => r.result === "RIGHT").length;
-  const predWrong = todayPredictions.filter((r) => r.result === "WRONG").length;
-  const winRatePct =
-    todayPredictions.length > 0
-      ? (predRight / todayPredictions.length) * 100
-      : 0;
-
   const setupParts = [...bySetup.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${k}:${v}`)
@@ -150,34 +151,13 @@ function buildDailyReportData(): DailyReportData {
     setupBySignalId.set(sid, s.setup);
   }
 
-  const predictionBySetup: DailyReportData["predictionBySetup"] = {
-    Momentum: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
-    Exhaustion: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
-    Mirror: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
-    Other: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
-  };
-  for (const p of todayPredictions) {
-    const setup =
-      p.setup && p.setup.trim()
-        ? p.setup
-        : p.signalId
-          ? (setupBySignalId.get(p.signalId) ?? "Other")
-          : "Other";
-    const bucket =
-      setup === "Momentum" || setup === "Exhaustion" || setup === "Mirror"
-        ? setup
-        : "Other";
-    const b = predictionBySetup[bucket];
-    b.total++;
-    if (p.result === "RIGHT") b.right++;
-    else if (p.result === "WRONG") b.wrong++;
-  }
-  for (const key of Object.keys(predictionBySetup) as Array<
-    keyof typeof predictionBySetup
-  >) {
-    const b = predictionBySetup[key];
-    b.winRatePct = b.total > 0 ? (b.right / b.total) * 100 : 0;
-  }
+  const dual = buildDualPredictionStats(todayPredictions, (p) =>
+    p.setup && p.setup.trim()
+      ? p.setup
+      : p.signalId
+        ? (setupBySignalId.get(p.signalId) ?? "Other")
+        : "Other",
+  );
 
   const details: DetailItem[] = todaySignals.map((s, idx) => {
     const sid = s.signalId ?? `${s.openTime}-${s.signal}-${s.setup}`;
@@ -191,8 +171,20 @@ function buildDailyReportData(): DailyReportData {
       signal: s.signal,
       setup: s.setup,
       reason: s.reason,
-      prediction: p ? `${p.expected} -> ${p.actual}` : "PENDING",
+      prediction: p
+        ? ((): string => {
+            let s = `${p.expected} → ${p.actual}`;
+            if (p.botExpected !== undefined) {
+              s += ` · bot ${p.botExpected}`;
+              s +=
+                p.humanPick != null ? ` · you ${p.humanPick}` : ` · you —`;
+            }
+            return s;
+          })()
+        : "PENDING",
       result: p ? p.result : "PENDING",
+      resultVsBot: p ? (scoreRowVsBot(p) ?? "—") : "PENDING",
+      resultVsMyPick: p ? (scoreRowVsMyPick(p) ?? "—") : "PENDING",
       baselineClose: p ? p.baselineClose : null,
       nextClose: p ? p.nextClose : null,
     };
@@ -205,11 +197,8 @@ function buildDailyReportData(): DailyReportData {
     up,
     down,
     setups: setupParts || "-",
-    predictionTotal: todayPredictions.length,
-    right: predRight,
-    wrong: predWrong,
-    winRatePct,
-    predictionBySetup,
+    botPrediction: dual.bot,
+    myPicks: dual.myPicks,
     details,
   };
 }
@@ -230,7 +219,9 @@ export function buildDailyReportLines(): string[] {
       detailLines.push(`  Close       : ${item.close.toFixed(2)}`);
       detailLines.push(`  Signal      : ${item.signal} (${item.setup})`);
       detailLines.push(`  Prediction  : ${item.prediction}`);
-      detailLines.push(`  Result      : ${item.result}`);
+      detailLines.push(`  Result (log): ${item.result}`);
+      detailLines.push(`  vs bot      : ${item.resultVsBot}`);
+      detailLines.push(`  vs my pick  : ${item.resultVsMyPick}`);
       detailLines.push(
         `  Baseline/Next: ${
           item.baselineClose !== null && item.nextClose !== null
@@ -251,18 +242,32 @@ export function buildDailyReportLines(): string[] {
     `  UP / DOWN : ${d.up} / ${d.down}`,
     `  Setups    : ${d.setups}`,
     "",
-    "Predictions",
-    `  Total     : ${d.predictionTotal}`,
-    `  Right     : ${d.right}`,
-    `  Wrong     : ${d.wrong}`,
-    `  Win rate  : ${d.winRatePct.toFixed(1)}%`,
+    "Bot prediction (vs next close)",
+    `  Total     : ${d.botPrediction.total}`,
+    `  Right     : ${d.botPrediction.right}`,
+    `  Wrong     : ${d.botPrediction.wrong}`,
+    `  Win rate  : ${d.botPrediction.winRatePct.toFixed(1)}%`,
     "",
-    "Predictions by setup",
-    `  Momentum   : ${d.predictionBySetup.Momentum.total} (✅ ${d.predictionBySetup.Momentum.right} / ❌ ${d.predictionBySetup.Momentum.wrong}) ${d.predictionBySetup.Momentum.winRatePct.toFixed(1)}%`,
-    `  Exhaustion : ${d.predictionBySetup.Exhaustion.total} (✅ ${d.predictionBySetup.Exhaustion.right} / ❌ ${d.predictionBySetup.Exhaustion.wrong}) ${d.predictionBySetup.Exhaustion.winRatePct.toFixed(1)}%`,
-    `  Mirror     : ${d.predictionBySetup.Mirror.total} (✅ ${d.predictionBySetup.Mirror.right} / ❌ ${d.predictionBySetup.Mirror.wrong}) ${d.predictionBySetup.Mirror.winRatePct.toFixed(1)}%`,
-    d.predictionBySetup.Other.total > 0
-      ? `  Other      : ${d.predictionBySetup.Other.total} (✅ ${d.predictionBySetup.Other.right} / ❌ ${d.predictionBySetup.Other.wrong}) ${d.predictionBySetup.Other.winRatePct.toFixed(1)}%`
+    "  By setup",
+    `  Momentum   : ${d.botPrediction.bySetup.Momentum.total} (✅ ${d.botPrediction.bySetup.Momentum.right} / ❌ ${d.botPrediction.bySetup.Momentum.wrong}) ${d.botPrediction.bySetup.Momentum.winRatePct.toFixed(1)}%`,
+    `  Exhaustion : ${d.botPrediction.bySetup.Exhaustion.total} (✅ ${d.botPrediction.bySetup.Exhaustion.right} / ❌ ${d.botPrediction.bySetup.Exhaustion.wrong}) ${d.botPrediction.bySetup.Exhaustion.winRatePct.toFixed(1)}%`,
+    `  Mirror     : ${d.botPrediction.bySetup.Mirror.total} (✅ ${d.botPrediction.bySetup.Mirror.right} / ❌ ${d.botPrediction.bySetup.Mirror.wrong}) ${d.botPrediction.bySetup.Mirror.winRatePct.toFixed(1)}%`,
+    d.botPrediction.bySetup.Other.total > 0
+      ? `  Other      : ${d.botPrediction.bySetup.Other.total} (✅ ${d.botPrediction.bySetup.Other.right} / ❌ ${d.botPrediction.bySetup.Other.wrong}) ${d.botPrediction.bySetup.Other.winRatePct.toFixed(1)}%`
+      : "  Other      : 0",
+    "",
+    "My picks (Telegram button only)",
+    `  Total     : ${d.myPicks.total}`,
+    `  Right     : ${d.myPicks.right}`,
+    `  Wrong     : ${d.myPicks.wrong}`,
+    `  Win rate  : ${d.myPicks.total > 0 ? d.myPicks.winRatePct.toFixed(1) : "—"}%`,
+    "",
+    "  By setup",
+    `  Momentum   : ${d.myPicks.bySetup.Momentum.total} (✅ ${d.myPicks.bySetup.Momentum.right} / ❌ ${d.myPicks.bySetup.Momentum.wrong}) ${d.myPicks.bySetup.Momentum.total > 0 ? d.myPicks.bySetup.Momentum.winRatePct.toFixed(1) : "—"}%`,
+    `  Exhaustion : ${d.myPicks.bySetup.Exhaustion.total} (✅ ${d.myPicks.bySetup.Exhaustion.right} / ❌ ${d.myPicks.bySetup.Exhaustion.wrong}) ${d.myPicks.bySetup.Exhaustion.total > 0 ? d.myPicks.bySetup.Exhaustion.winRatePct.toFixed(1) : "—"}%`,
+    `  Mirror     : ${d.myPicks.bySetup.Mirror.total} (✅ ${d.myPicks.bySetup.Mirror.right} / ❌ ${d.myPicks.bySetup.Mirror.wrong}) ${d.myPicks.bySetup.Mirror.total > 0 ? d.myPicks.bySetup.Mirror.winRatePct.toFixed(1) : "—"}%`,
+    d.myPicks.bySetup.Other.total > 0
+      ? `  Other      : ${d.myPicks.bySetup.Other.total} (✅ ${d.myPicks.bySetup.Other.right} / ❌ ${d.myPicks.bySetup.Other.wrong}) ${d.myPicks.bySetup.Other.winRatePct.toFixed(1)}%`
       : "  Other      : 0",
     ...detailLines,
     "======================================================",
@@ -287,6 +292,9 @@ export function buildDailyReportSummaryHtml(): string {
 }
 
 function buildDailyReportHeaderLinesHtml(d: DailyReportData): string[] {
+  const bot = d.botPrediction;
+  const my = d.myPicks;
+  const mb = my.total > 0 ? my.winRatePct.toFixed(1) : "—";
   return [
     "📊 <b>Daily Report</b> <i>(GMT+7)</i>",
     `🗓️ Date: <code>${d.date}</code>`,
@@ -296,20 +304,34 @@ function buildDailyReportHeaderLinesHtml(d: DailyReportData): string[] {
     `• UP / DOWN: <code>${d.up} / ${d.down}</code>`,
     `• Setups: <code>${d.setups}</code>`,
     "",
-    "🎯 <b>Predictions</b>",
-    `• Total: <code>${d.predictionTotal}</code>`,
-    `• ✅ Right: <code>${d.right}</code>`,
-    `• ❌ Wrong: <code>${d.wrong}</code>`,
-    `• 🏆 Win rate: <code>${d.winRatePct.toFixed(1)}%</code>`,
+    "🤖 <b>Bot prediction</b> <i>(vs next close)</i>",
+    `• Total: <code>${bot.total}</code>`,
+    `• ✅ Right: <code>${bot.right}</code>`,
+    `• ❌ Wrong: <code>${bot.wrong}</code>`,
+    `• 🏆 Win rate: <code>${bot.winRatePct.toFixed(1)}%</code>`,
     "",
-    "🧩 <b>Predictions by setup</b>",
-    `• Momentum: <code>${d.predictionBySetup.Momentum.total}</code> (✅ <code>${d.predictionBySetup.Momentum.right}</code> / ❌ <code>${d.predictionBySetup.Momentum.wrong}</code>) — <code>${d.predictionBySetup.Momentum.winRatePct.toFixed(1)}%</code>`,
-    `• Exhaustion: <code>${d.predictionBySetup.Exhaustion.total}</code> (✅ <code>${d.predictionBySetup.Exhaustion.right}</code> / ❌ <code>${d.predictionBySetup.Exhaustion.wrong}</code>) — <code>${d.predictionBySetup.Exhaustion.winRatePct.toFixed(1)}%</code>`,
-    `• Mirror: <code>${d.predictionBySetup.Mirror.total}</code> (✅ <code>${d.predictionBySetup.Mirror.right}</code> / ❌ <code>${d.predictionBySetup.Mirror.wrong}</code>) — <code>${d.predictionBySetup.Mirror.winRatePct.toFixed(1)}%</code>`,
-    d.predictionBySetup.Other.total > 0
-      ? `• Other: <code>${d.predictionBySetup.Other.total}</code> (✅ <code>${d.predictionBySetup.Other.right}</code> / ❌ <code>${d.predictionBySetup.Other.wrong}</code>) — <code>${d.predictionBySetup.Other.winRatePct.toFixed(1)}%</code>`
+    "🧩 <b>Bot — by setup</b>",
+    `• Momentum: <code>${bot.bySetup.Momentum.total}</code> (✅ <code>${bot.bySetup.Momentum.right}</code> / ❌ <code>${bot.bySetup.Momentum.wrong}</code>) — <code>${bot.bySetup.Momentum.winRatePct.toFixed(1)}%</code>`,
+    `• Exhaustion: <code>${bot.bySetup.Exhaustion.total}</code> (✅ <code>${bot.bySetup.Exhaustion.right}</code> / ❌ <code>${bot.bySetup.Exhaustion.wrong}</code>) — <code>${bot.bySetup.Exhaustion.winRatePct.toFixed(1)}%</code>`,
+    `• Mirror: <code>${bot.bySetup.Mirror.total}</code> (✅ <code>${bot.bySetup.Mirror.right}</code> / ❌ <code>${bot.bySetup.Mirror.wrong}</code>) — <code>${bot.bySetup.Mirror.winRatePct.toFixed(1)}%</code>`,
+    bot.bySetup.Other.total > 0
+      ? `• Other: <code>${bot.bySetup.Other.total}</code> (✅ <code>${bot.bySetup.Other.right}</code> / ❌ <code>${bot.bySetup.Other.wrong}</code>) — <code>${bot.bySetup.Other.winRatePct.toFixed(1)}%</code>`
       : "",
-  ];
+    "",
+    "🧑‍💻 <b>My picks</b> <i>(Telegram buttons only)</i>",
+    `• Total: <code>${my.total}</code>`,
+    `• ✅ Right: <code>${my.right}</code>`,
+    `• ❌ Wrong: <code>${my.wrong}</code>`,
+    `• 🏆 Win rate: <code>${mb}%</code>`,
+    "",
+    "🧩 <b>My picks — by setup</b>",
+    `• Momentum: <code>${my.bySetup.Momentum.total}</code> (✅ <code>${my.bySetup.Momentum.right}</code> / ❌ <code>${my.bySetup.Momentum.wrong}</code>) — <code>${my.bySetup.Momentum.total > 0 ? my.bySetup.Momentum.winRatePct.toFixed(1) : "—"}%</code>`,
+    `• Exhaustion: <code>${my.bySetup.Exhaustion.total}</code> (✅ <code>${my.bySetup.Exhaustion.right}</code> / ❌ <code>${my.bySetup.Exhaustion.wrong}</code>) — <code>${my.bySetup.Exhaustion.total > 0 ? my.bySetup.Exhaustion.winRatePct.toFixed(1) : "—"}%</code>`,
+    `• Mirror: <code>${my.bySetup.Mirror.total}</code> (✅ <code>${my.bySetup.Mirror.right}</code> / ❌ <code>${my.bySetup.Mirror.wrong}</code>) — <code>${my.bySetup.Mirror.total > 0 ? my.bySetup.Mirror.winRatePct.toFixed(1) : "—"}%</code>`,
+    my.bySetup.Other.total > 0
+      ? `• Other: <code>${my.bySetup.Other.total}</code> (✅ <code>${my.bySetup.Other.right}</code> / ❌ <code>${my.bySetup.Other.wrong}</code>) — <code>${my.bySetup.Other.winRatePct.toFixed(1)}%</code>`
+      : "",
+  ].filter((line) => line !== "");
 }
 
 const TELEGRAM_DETAILS_MAX_CHARS = 3600;
@@ -327,7 +349,9 @@ function buildDailyReportDetailsHtmlForData(d: DailyReportData): string {
       `• Close: <code>${item.close.toFixed(2)}</code>`,
       `• Signal: <code>${item.signal} (${item.setup})</code>`,
       `• Prediction: <code>${item.prediction}</code>`,
-      `• Result: <b>${item.result}</b>`,
+      `• Result (logged): <b>${item.result}</b>`,
+      `• vs bot: <b>${item.resultVsBot}</b>`,
+      `• vs my pick: <b>${item.resultVsMyPick}</b>`,
       `• Baseline/Next: <code>${
         item.baselineClose !== null && item.nextClose !== null
           ? `${item.baselineClose.toFixed(2)} -> ${item.nextClose.toFixed(2)}`

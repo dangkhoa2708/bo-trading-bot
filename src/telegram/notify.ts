@@ -16,6 +16,7 @@ import { buildChartTestTelegramPayload } from "../logging/verify.js";
 import { tradingViewBinanceUrl } from "../chart/externalLinks.js";
 import { BACKTEST_WINDOW_DAYS, runBacktest } from "../backtest/runner.js";
 import { buildBacktestReportHtml } from "../report/backtest.js";
+import { recordHumanPick } from "../prediction/humanPick.js";
 
 type ReportInlineButton =
   | { text: string; url: string }
@@ -192,7 +193,27 @@ export async function startTelegramCommandListener(): Promise<void> {
   b.on("callback_query", async (ctx) => {
     const cq = ctx.callbackQuery;
     const data = "data" in cq ? cq.data : undefined;
-    if (!data?.startsWith("rpt:")) return;
+    if (!data) return;
+
+    const pickMatch = /^pick:(\d+):([UD])$/.exec(data);
+    if (pickMatch) {
+      const chatId = String(ctx.chat?.id ?? "");
+      if (chatId !== config.telegramChatId) {
+        await ctx.answerCbQuery("Unauthorized");
+        return;
+      }
+      const fromOpenTime = Number(pickMatch[1]);
+      const dir = pickMatch[2] === "U" ? "UP" : "DOWN";
+      const ok = recordHumanPick(fromOpenTime, dir);
+      if (!ok) {
+        await ctx.answerCbQuery("Unknown or expired — next candle already closed?");
+        return;
+      }
+      await ctx.answerCbQuery(`Recorded your pick: ${dir}`);
+      return;
+    }
+
+    if (!data.startsWith("rpt:")) return;
     const parts = data.split(":");
     if (parts.length !== 3) return;
     const [, kind, flag] = parts;

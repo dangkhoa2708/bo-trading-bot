@@ -19,7 +19,11 @@ export type PredictionLogRow = {
   fromOpenTime: number;
   baselineClose: number;
   nextClose: number;
+  /** Direction used to score `result` (human pick if set, else bot). */
   expected: "UP" | "DOWN";
+  botExpected: "UP" | "DOWN";
+  /** User's Telegram button choice; omitted or null if not set before resolve. */
+  humanPick: "UP" | "DOWN" | null;
   actual: "UP" | "DOWN" | "FLAT";
   result: "RIGHT" | "WRONG";
   setup: string;

@@ -153,7 +153,31 @@ export function formatPrePredictionTelegramLog(args: {
     `<b>Baseline close</b>: <code>${fmtPrice(args.baselineClose)}</code>`,
     `<b>ID</b>: <code>${escapeHtml(args.signalId)}</code>`,
     `<b>Reason</b>: <i>${escapeHtml(args.reason)}</i>`,
+    "",
+    "<i>Review: tap your expected next close vs baseline.</i>",
   ].join("\n");
+}
+
+/** Inline keyboard: human pick UP/DOWN for this signal bar (`openTime` ms). */
+export function prePredictionReplyMarkup(fromOpenTime: number): {
+  inline_keyboard: Array<
+    Array<{ text: string; callback_data: string }>
+  >;
+} {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "👆 My pick: UP",
+          callback_data: `pick:${fromOpenTime}:U`,
+        },
+        {
+          text: "👇 My pick: DOWN",
+          callback_data: `pick:${fromOpenTime}:D`,
+        },
+      ],
+    ],
+  };
 }
 
 export function formatPostPredictionTelegramLog(args: {
@@ -163,7 +187,12 @@ export function formatPostPredictionTelegramLog(args: {
   baselineClose: number;
   nextOpenTime: number;
   nextClose: number;
-  expected: "UP" | "DOWN";
+  /** Bot / strategy direction. */
+  botExpected: "UP" | "DOWN";
+  /** User Telegram pick; null if not chosen before resolve. */
+  humanPick: "UP" | "DOWN" | null;
+  /** Direction used to compute result (human pick or bot fallback). */
+  scoredExpected: "UP" | "DOWN";
   actual: "UP" | "DOWN" | "FLAT";
   result: "RIGHT" | "WRONG";
   setup: string;
@@ -173,12 +202,23 @@ export function formatPostPredictionTelegramLog(args: {
   const fromText = fmtGmt7(args.fromOpenTime);
   const nextText = fmtGmt7(args.nextOpenTime);
   const conf = setupConfidenceHtmlLine(args.setup);
+  const humanLine =
+    args.humanPick !== null
+      ? `<b>Your pick</b>: <code>${escapeHtml(args.humanPick)}</code>`
+      : `<b>Your pick</b>: <i>— not recorded (scored vs bot)</i>`;
+  const scoreNote =
+    args.humanPick !== null
+      ? `<i>Result vs your pick</i>`
+      : `<i>Result vs bot</i>`;
   return [
     `${icon} <b>Post‑prediction</b> <b>${ok ? "RIGHT" : "WRONG"}</b>  <code>${escapeHtml(args.signalId)}</code>`,
     ...(conf !== null ? [conf] : []),
+    scoreNote,
     `<b>Pair</b>: <code>${escapeHtml(args.pair)}</code>`,
     `<b>From</b>: <code>${escapeHtml(fromText)}</code> → <b>Next</b>: <code>${escapeHtml(nextText)}</code> <i>(GMT+7)</i>`,
-    `<b>Expected</b>: <code>${escapeHtml(args.expected)}</code>  <b>Actual</b>: <code>${escapeHtml(args.actual)}</code>`,
+    `<b>Bot predicted</b>: <code>${escapeHtml(args.botExpected)}</code>`,
+    humanLine,
+    `<b>Scored as</b>: <code>${escapeHtml(args.scoredExpected)}</code>  <b>Market</b>: <code>${escapeHtml(args.actual)}</code>`,
     `<b>Baseline</b>: <code>${fmtPrice(args.baselineClose)}</code>  <b>Next close</b>: <code>${fmtPrice(args.nextClose)}</code>`,
     `<b>Setup</b>: <code>${escapeHtml(args.setup)}</code>`,
     `<b>ID</b>: <code>${escapeHtml(args.signalId)}</code>`,

@@ -12,7 +12,14 @@ export async function logRuntime(
   telegram?: {
     text: string;
     parseMode?: "HTML" | "MarkdownV2";
-    replyMarkup?: { inline_keyboard: Array<Array<{ text: string; url: string }>> };
+    replyMarkup?: {
+      inline_keyboard: Array<
+        Array<
+          | { text: string; url: string }
+          | { text: string; callback_data: string }
+        >
+      >;
+    };
   },
 ): Promise<void> {
   if (level === "warn") console.warn(message);

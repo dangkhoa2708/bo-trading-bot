@@ -9,9 +9,14 @@ import type { Candle } from "./types.js";
 import {
   formatPostPredictionTelegramLog,
   formatPrePredictionTelegramLog,
+  prePredictionReplyMarkup,
   formatSignalTelegramLog,
   formatVerifyLog,
 } from "./logging/verify.js";
+import {
+  consumeHumanPickForBar,
+  registerAwaitingHumanPick,
+} from "./prediction/humanPick.js";
 import { logRuntime } from "./logging/runtime.js";
 import { startTelegramCommandListener } from "./telegram/notify.js";
 
@@ -57,16 +62,21 @@ async function main(): Promise<void> {
 
   const sub = subscribeKline(config.symbol, config.interval, async (c) => {
     if (pendingPrediction) {
-      const expected = pendingPrediction.predicted;
+      const botExpected = pendingPrediction.predicted;
+      const humanPick = consumeHumanPickForBar(
+        pendingPrediction.fromOpenTime,
+      );
+      const humanPickOrNull = humanPick ?? null;
+      const scoredExpected = humanPick ?? botExpected;
       const actual: "UP" | "DOWN" | "FLAT" =
         c.close > pendingPrediction.baselineClose
           ? "UP"
           : c.close < pendingPrediction.baselineClose
             ? "DOWN"
             : "FLAT";
-      const status = actual === expected ? "RIGHT" : "WRONG";
+      const status = actual === scoredExpected ? "RIGHT" : "WRONG";
       await logRuntime(
-        `[post-prediction] id=${pendingPrediction.signalId} for=${new Date(pendingPrediction.fromOpenTime).toISOString()} baseline_close=${pendingPrediction.baselineClose} next_close=${c.close} expected=${expected} actual=${actual} result=${status} setup=${pendingPrediction.fromSetup}`,
+        `[post-prediction] id=${pendingPrediction.signalId} for=${new Date(pendingPrediction.fromOpenTime).toISOString()} baseline_close=${pendingPrediction.baselineClose} next_close=${c.close} bot=${botExpected} human=${humanPickOrNull ?? "—"} scored=${scoredExpected} actual=${actual} result=${status} setup=${pendingPrediction.fromSetup}`,
         "log",
         {
           text: formatPostPredictionTelegramLog({
@@ -76,7 +86,9 @@ async function main(): Promise<void> {
             baselineClose: pendingPrediction.baselineClose,
             nextOpenTime: c.openTime,
             nextClose: c.close,
-            expected,
+            botExpected,
+            humanPick: humanPickOrNull,
+            scoredExpected,
             actual,
             result: status,
             setup: pendingPrediction.fromSetup,
@@ -90,7 +102,9 @@ async function main(): Promise<void> {
         fromOpenTime: pendingPrediction.fromOpenTime,
         baselineClose: pendingPrediction.baselineClose,
         nextClose: c.close,
-        expected,
+        expected: scoredExpected,
+        botExpected,
+        humanPick: humanPickOrNull,
         actual,
         result: status,
         setup: pendingPrediction.fromSetup,
@@ -143,6 +157,7 @@ async function main(): Promise<void> {
       fromSetup: result.setup,
       baselineClose: c.close,
     };
+    registerAwaitingHumanPick(c.openTime);
     await logRuntime(
       `[pre-prediction] id=${signalId} from=${new Date(c.openTime).toISOString()} predict_next=${result.signal} setup=${result.setup} reason=${result.reason}`,
       "log",
@@ -157,6 +172,7 @@ async function main(): Promise<void> {
           reason: result.reason,
         }),
         parseMode: "HTML",
+        replyMarkup: prePredictionReplyMarkup(c.openTime),
       },
     );
 
