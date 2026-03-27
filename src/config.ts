@@ -1,52 +1,81 @@
 import "dotenv/config";
 
-const num = (v: string | undefined, fallback: number) => {
-  if (v === undefined || v === "") return fallback;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+export type BotConfig = {
+  symbol: string;
+  interval: string;
+  candleBuffer: number;
+
+  emaPeriod: number;
+  bodyLookback: number;
+
+  momentumBodyVsAvg: number;
+  momentumRangeVsAvg: number;
+  minBodyToRange: number;
+  maxCloseToExtremePct: number;
+
+  exhaustionRunMin: number;
+  exhaustionRevMinPrevRangeMult: number;
+  exhaustionRevMaxPrevRangeMult: number;
+
+  chopLookback: number;
+  lowVolFactor: number;
+  lowVolCompare: number;
+
+  atrPeriod: number;
+  minAtrPct: number;
+  maxAtrPct: number;
+
+  sidewaysEmaPct: number;
+
+  mirrorMaxBelowEmaPct: number;
+  mirrorDumpAtrMult: number;
+  mirrorDumpLookback: number;
+
+  dryRun: boolean;
+
+  telegramBotToken: string;
+  telegramChatId: string;
 };
 
-export const config = {
-  symbol: process.env.SYMBOL ?? "BNBUSDT",
-  interval: process.env.INTERVAL ?? "5m",
-  candleBuffer: num(process.env.CANDLE_BUFFER, 50),
-  emaPeriod: num(process.env.EMA_PERIOD, 20),
-  bodyLookback: num(process.env.BODY_LOOKBACK, 20),
-  /** Momentum: each of last 3 bodies must be >= this × avg body */
-  momentumBodyVsAvg: num(process.env.MOMENTUM_BODY_VS_AVG, 1.0),
-  /** Momentum: each of last 3 ranges must be >= this × avg range */
-  momentumRangeVsAvg: num(process.env.MOMENTUM_RANGE_VS_AVG, 0.9),
-  /** Body must be at least this fraction of full range (small wicks) */
-  minBodyToRange: num(process.env.MIN_BODY_TO_RANGE, 0.55),
-  /**
-   * Close must be near extreme in trend direction:
-   * - green: (high-close)/range <= threshold
-   * - red:   (close-low)/range <= threshold
-   */
-  maxCloseToExtremePct: num(process.env.MAX_CLOSE_TO_EXTREME_PCT, 0.25),
-  /** Exhaustion run length (same color) */
-  exhaustionRunMin: num(process.env.EXHAUSTION_RUN_MIN, 4),
-  /** Exhaustion: reversal range should be within previous range × [min, max] */
-  exhaustionRevMinPrevRangeMult: num(
-    process.env.EXHAUSTION_REV_MIN_PREV_RANGE_MULT,
-    0.4,
-  ),
-  exhaustionRevMaxPrevRangeMult: num(
-    process.env.EXHAUSTION_REV_MAX_PREV_RANGE_MULT,
-    0.7,
-  ),
-  /** Skip: "choppy" if last N candles alternate color */
-  chopLookback: num(process.env.CHOP_LOOKBACK, 4),
-  /** Skip: low vol if median range < factor × median of longer window */
-  lowVolFactor: num(process.env.LOW_VOL_FACTOR, 0.45),
-  lowVolCompare: num(process.env.LOW_VOL_COMPARE, 20),
-  /** ATR volatility filter */
-  atrPeriod: num(process.env.ATR_PERIOD, 14),
-  minAtrPct: num(process.env.MIN_ATR_PCT, 0.00005),
-  maxAtrPct: num(process.env.MAX_ATR_PCT, 0.03),
-  /** Skip: sideways if |close - EMA| / close < this */
-  sidewaysEmaPct: num(process.env.SIDEWAYS_EMA_PCT, 0.001),
+// Strategy/runtime settings live here (code-level config).
+// Secrets live in `.env` only (Telegram token/chat id).
+const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
+  symbol: "BNBUSDT",
+  interval: "5m",
+  candleBuffer: 50,
+
+  emaPeriod: 20,
+  bodyLookback: 20,
+
+  momentumBodyVsAvg: 1.0,
+  momentumRangeVsAvg: 0.9,
+  minBodyToRange: 0.55,
+  maxCloseToExtremePct: 0.25,
+
+  exhaustionRunMin: 4,
+  exhaustionRevMinPrevRangeMult: 0.4,
+  exhaustionRevMaxPrevRangeMult: 0.7,
+
+  chopLookback: 4,
+  lowVolFactor: 0.45,
+  lowVolCompare: 20,
+
+  atrPeriod: 14,
+  minAtrPct: 0.00005,
+  maxAtrPct: 0.03,
+
+  sidewaysEmaPct: 0.001,
+
+  // Mirror (Setup C) guards: avoid fake bounces in strong downtrend / post-dump.
+  mirrorMaxBelowEmaPct: 0.002, // allow Mirror UP if close is within 0.2% below EMA20
+  mirrorDumpAtrMult: 2.5, // treat a red candle as "dump" if range >= 2.5 * ATR
+  mirrorDumpLookback: 3, // block Mirror UP if a dump happened within last N candles (excluding last3)
+
+  dryRun: true,
+};
+
+export const config: BotConfig = {
+  ...defaults,
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
   telegramChatId: process.env.TELEGRAM_CHAT_ID ?? "",
-  dryRun: process.env.DRY_RUN === "1" || process.env.DRY_RUN === "true",
 };

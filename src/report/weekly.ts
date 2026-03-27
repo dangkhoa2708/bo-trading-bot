@@ -23,6 +23,13 @@ type PredictionRow = {
   result: "RIGHT" | "WRONG" | string;
 };
 
+type PredStats = {
+  total: number;
+  right: number;
+  wrong: number;
+  winRatePct: number;
+};
+
 type DetailItem = {
   index: number;
   signalId: string;
@@ -49,6 +56,7 @@ type WeeklyReportData = {
   right: number;
   wrong: number;
   winRatePct: number;
+  predictionBySetup: Record<"Momentum" | "Exhaustion" | "Mirror" | "Other", PredStats>;
   details: DetailItem[];
 };
 
@@ -92,6 +100,12 @@ function buildWeeklyReportData(): WeeklyReportData {
       right: 0,
       wrong: 0,
       winRatePct: 0,
+      predictionBySetup: {
+        Momentum: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
+        Exhaustion: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
+        Mirror: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
+        Other: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
+      },
       details: [],
     };
   }
@@ -116,6 +130,37 @@ function buildWeeklyReportData(): WeeklyReportData {
   for (const p of predictions) {
     predByFromOpen.set(p.fromOpenTime, p);
     if (p.signalId) predBySignalId.set(p.signalId, p);
+  }
+
+  const setupBySignalId = new Map<string, string>();
+  for (const s of signals) {
+    const sid = s.signalId ?? `${s.openTime}-${s.signal}-${s.setup}`;
+    setupBySignalId.set(sid, s.setup);
+  }
+
+  const predictionBySetup: WeeklyReportData["predictionBySetup"] = {
+    Momentum: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
+    Exhaustion: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
+    Mirror: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
+    Other: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
+  };
+  for (const p of predictions) {
+    const sid = p.signalId;
+    const setup = sid ? (setupBySignalId.get(sid) ?? "Other") : "Other";
+    const bucket =
+      setup === "Momentum" || setup === "Exhaustion" || setup === "Mirror"
+        ? setup
+        : "Other";
+    const b = predictionBySetup[bucket];
+    b.total++;
+    if (p.result === "RIGHT") b.right++;
+    else if (p.result === "WRONG") b.wrong++;
+  }
+  for (const key of Object.keys(predictionBySetup) as Array<
+    keyof typeof predictionBySetup
+  >) {
+    const b = predictionBySetup[key];
+    b.winRatePct = b.total > 0 ? (b.right / b.total) * 100 : 0;
   }
 
   const details: DetailItem[] = signals.map((s, idx) => {
@@ -148,6 +193,7 @@ function buildWeeklyReportData(): WeeklyReportData {
     right: predRight,
     wrong: predWrong,
     winRatePct,
+    predictionBySetup,
     details,
   };
 }
@@ -194,6 +240,14 @@ export function buildWeeklyReportLines(): string[] {
     `  Right     : ${d.right}`,
     `  Wrong     : ${d.wrong}`,
     `  Win rate  : ${d.winRatePct.toFixed(1)}%`,
+    "",
+    "Predictions by setup",
+    `  Momentum   : ${d.predictionBySetup.Momentum.total} (✅ ${d.predictionBySetup.Momentum.right} / ❌ ${d.predictionBySetup.Momentum.wrong}) ${d.predictionBySetup.Momentum.winRatePct.toFixed(1)}%`,
+    `  Exhaustion : ${d.predictionBySetup.Exhaustion.total} (✅ ${d.predictionBySetup.Exhaustion.right} / ❌ ${d.predictionBySetup.Exhaustion.wrong}) ${d.predictionBySetup.Exhaustion.winRatePct.toFixed(1)}%`,
+    `  Mirror     : ${d.predictionBySetup.Mirror.total} (✅ ${d.predictionBySetup.Mirror.right} / ❌ ${d.predictionBySetup.Mirror.wrong}) ${d.predictionBySetup.Mirror.winRatePct.toFixed(1)}%`,
+    d.predictionBySetup.Other.total > 0
+      ? `  Other      : ${d.predictionBySetup.Other.total} (✅ ${d.predictionBySetup.Other.right} / ❌ ${d.predictionBySetup.Other.wrong}) ${d.predictionBySetup.Other.winRatePct.toFixed(1)}%`
+      : "  Other      : 0",
     ...detailLines,
     "======================================================",
   ];
@@ -219,6 +273,14 @@ export function buildWeeklyReportText(): string {
     `• ✅ Right: <code>${d.right}</code>`,
     `• ❌ Wrong: <code>${d.wrong}</code>`,
     `• 🏆 Win rate: <code>${d.winRatePct.toFixed(1)}%</code>`,
+    "",
+    "🧩 <b>Predictions by setup</b>",
+    `• Momentum: <code>${d.predictionBySetup.Momentum.total}</code> (✅ <code>${d.predictionBySetup.Momentum.right}</code> / ❌ <code>${d.predictionBySetup.Momentum.wrong}</code>) — <code>${d.predictionBySetup.Momentum.winRatePct.toFixed(1)}%</code>`,
+    `• Exhaustion: <code>${d.predictionBySetup.Exhaustion.total}</code> (✅ <code>${d.predictionBySetup.Exhaustion.right}</code> / ❌ <code>${d.predictionBySetup.Exhaustion.wrong}</code>) — <code>${d.predictionBySetup.Exhaustion.winRatePct.toFixed(1)}%</code>`,
+    `• Mirror: <code>${d.predictionBySetup.Mirror.total}</code> (✅ <code>${d.predictionBySetup.Mirror.right}</code> / ❌ <code>${d.predictionBySetup.Mirror.wrong}</code>) — <code>${d.predictionBySetup.Mirror.winRatePct.toFixed(1)}%</code>`,
+    d.predictionBySetup.Other.total > 0
+      ? `• Other: <code>${d.predictionBySetup.Other.total}</code> (✅ <code>${d.predictionBySetup.Other.right}</code> / ❌ <code>${d.predictionBySetup.Other.wrong}</code>) — <code>${d.predictionBySetup.Other.winRatePct.toFixed(1)}%</code>`
+      : "",
   ];
 
   const detailText: string[] = [];

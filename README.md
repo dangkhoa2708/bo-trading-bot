@@ -30,7 +30,7 @@ Strategy behavior and constraints are defined in `RULES.md`.
 ## Project Structure
 
 - `src/main.ts` - app entrypoint and runtime flow
-- `src/config.ts` - env-driven configuration
+- `src/config.ts` - code + env configuration
 - `src/binance/rest.ts` - startup candle bootstrap
 - `src/binance/candleStream.ts` - live closed-candle stream
 - `src/strategy/engine.ts` - setup and skip logic
@@ -39,7 +39,7 @@ Strategy behavior and constraints are defined in `RULES.md`.
 - `src/telegram/notify.ts` - Telegram alert sender
 - `src/logger.ts` - jsonl signal logger
 - `RULES.md` - strategy source of truth
-- `env.example` - default config template
+- `env.example` - Telegram env template
 
 ## Prerequisites
 
@@ -66,7 +66,7 @@ cp env.example .env
 - `TELEGRAM_BOT_TOKEN=...`
 - `TELEGRAM_CHAT_ID=...`
 
-4) Start in dry run mode (default)
+4) Start in dry run mode (default, controlled in `src/config.ts`)
 
 ```bash
 npm run dev
@@ -74,12 +74,12 @@ npm run dev
 
 ## Run Modes
 
-- `DRY_RUN=1` -> no Telegram send, prints alert payload to console
-- `DRY_RUN=0` -> sends actual Telegram messages
+- `src/config.ts`: `dryRun: true` -> no Telegram send, prints alert payload to console
+- `src/config.ts`: `dryRun: false` -> sends actual Telegram messages
 
 Recommended rollout:
 
-1. Keep `DRY_RUN=1`
+1. Keep `dryRun: true`
 2. Observe logs/signals for at least several sessions
 3. Enable Telegram only after confidence check
 
@@ -100,7 +100,8 @@ Telegram command:
 
 ## Configuration
 
-See `env.example` for defaults.
+- Strategy/runtime settings live in `src/config.ts`
+- `.env` controls Telegram secrets only (start from `env.example`)
 
 Most useful knobs:
 

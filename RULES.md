@@ -59,6 +59,8 @@ For setup, run instructions, and operational notes, see `README.md`.
 ### Setup C: Mirror Cases
 
 - Weak red sequence followed by strong green close -> signal `UP`
+  - Guard: require close to be near/above EMA20 (avoid dead-cat bounces below EMA)
+  - Guard: skip Mirror UP for a short window after a large red dump candle (range vs ATR)
 - Strong red momentum can still emit `DOWN` as mirror when momentum-down exists but EMA filter blocks classic momentum condition
 
 ## Setup Evaluation Priority
@@ -100,27 +102,27 @@ Note: risk rules are policy-level constraints now; execution enforcement is futu
 
 ## Config Defaults
 
-From `env.example`:
+From `src/config.ts`:
 
-- `SYMBOL=BNBUSDT`
-- `CANDLE_BUFFER=50`
-- `EMA_PERIOD=20`
-- `BODY_LOOKBACK=20`
-- `MOMENTUM_BODY_VS_AVG=1`
-- `MOMENTUM_RANGE_VS_AVG=0.9`
-- `MIN_BODY_TO_RANGE=0.55`
-- `MAX_CLOSE_TO_EXTREME_PCT=0.25`
-- `EXHAUSTION_RUN_MIN=4`
-- `EXHAUSTION_REV_MIN_PREV_RANGE_MULT=0.4`
-- `EXHAUSTION_REV_MAX_PREV_RANGE_MULT=0.7`
-- `CHOP_LOOKBACK=4`
-- `LOW_VOL_FACTOR=0.45`
-- `LOW_VOL_COMPARE=20`
-- `ATR_PERIOD=14`
-- `MIN_ATR_PCT=0.00005`
-- `MAX_ATR_PCT=0.03`
-- `SIDEWAYS_EMA_PCT=0.001`
-- `DRY_RUN=1`
+- `symbol="BNBUSDT"`
+- `candleBuffer=50`
+- `emaPeriod=20`
+- `bodyLookback=20`
+- `momentumBodyVsAvg=1`
+- `momentumRangeVsAvg=0.9`
+- `minBodyToRange=0.55`
+- `maxCloseToExtremePct=0.25`
+- `exhaustionRunMin=4`
+- `exhaustionRevMinPrevRangeMult=0.4`
+- `exhaustionRevMaxPrevRangeMult=0.7`
+- `chopLookback=4`
+- `lowVolFactor=0.45`
+- `lowVolCompare=20`
+- `atrPeriod=14`
+- `minAtrPct=0.00005`
+- `maxAtrPct=0.03`
+- `sidewaysEmaPct=0.001`
+- `dryRun=true`
 
 ## Change Control
 

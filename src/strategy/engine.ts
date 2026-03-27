@@ -202,12 +202,29 @@ function exhaustion(
 /** Setup C (part): weak reds + strong green → UP */
 function mirrorWeakRedStrongGreen(
   candles: Candle[],
+  ema: number,
 ): { ok: boolean; note: string } {
   if (candles.length < 6) return { ok: false, note: "short" };
   const last3 = candles.slice(-3);
   const [a, b, c] = last3;
   if (!a || !b || !c) return { ok: false, note: "" };
   if (!isGreen(c) || !isRed(a) || !isRed(b)) return { ok: false, note: "" };
+
+  // Guard 1: avoid Mirror UP when price is still meaningfully below EMA20.
+  const minClose = ema * (1 - config.mirrorMaxBelowEmaPct);
+  if (c.close < minClose) return { ok: false, note: "" };
+
+  // Guard 2: avoid Mirror UP right after a big red "dump" candle (vs ATR).
+  const atr = atrLast(candles, config.atrPeriod);
+  if (atr !== null && atr > 0) {
+    const lookback = Math.max(0, config.mirrorDumpLookback);
+    const excludeLast3Start = Math.max(0, candles.length - 3 - lookback);
+    const tail = candles.slice(excludeLast3Start, candles.length - 3);
+    const hadDump = tail.some(
+      (x) => isRed(x) && range(x) >= atr * config.mirrorDumpAtrMult,
+    );
+    if (hadDump) return { ok: false, note: "" };
+  }
 
   const weakening = body(a) > body(b);
   const weakRedBody = body(b) < range(b) * 0.55;
@@ -258,7 +275,7 @@ export function evaluate(candles: Candle[]): StrategyResult {
     };
   }
 
-  const mirUp = mirrorWeakRedStrongGreen(candles);
+  const mirUp = mirrorWeakRedStrongGreen(candles, ema);
   if (mirUp.ok) {
     return { signal: "UP", setup: "Mirror", reason: mirUp.note };
   }

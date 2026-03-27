@@ -5,7 +5,13 @@ import { appendPredictionLog, appendSignalLog } from "./logger.js";
 import { SignalDispatcher } from "./signal/dispatcher.js";
 import { evaluate } from "./strategy/engine.js";
 import type { Candle } from "./types.js";
-import { formatVerifyLog, formatVerifyTelegramLog } from "./logging/verify.js";
+import {
+  formatPostPredictionTelegramLog,
+  formatPrePredictionTelegramLog,
+  formatSignalTelegramLog,
+  formatVerifyLog,
+  formatVerifyTelegramLog,
+} from "./logging/verify.js";
 import { logRuntime } from "./logging/runtime.js";
 import { startTelegramCommandListener } from "./telegram/notify.js";
 
@@ -61,6 +67,22 @@ async function main(): Promise<void> {
       const status = actual === expected ? "RIGHT" : "WRONG";
       await logRuntime(
         `[post-prediction] id=${pendingPrediction.signalId} for=${new Date(pendingPrediction.fromOpenTime).toISOString()} baseline_close=${pendingPrediction.baselineClose} next_close=${c.close} expected=${expected} actual=${actual} result=${status} setup=${pendingPrediction.fromSetup}`,
+        "log",
+        {
+          text: formatPostPredictionTelegramLog({
+            pair: config.symbol,
+            signalId: pendingPrediction.signalId,
+            fromOpenTime: pendingPrediction.fromOpenTime,
+            baselineClose: pendingPrediction.baselineClose,
+            nextOpenTime: c.openTime,
+            nextClose: c.close,
+            expected,
+            actual,
+            result: status,
+            setup: pendingPrediction.fromSetup,
+          }),
+          parseMode: "HTML",
+        },
       );
       appendPredictionLog({
         signalId: pendingPrediction.signalId,
@@ -108,6 +130,11 @@ async function main(): Promise<void> {
     const signalId = `${c.openTime}-${result.signal}-${result.setup}`;
     await logRuntime(
       `[signal] id=${signalId} ${new Date(c.openTime).toISOString()} ${result.signal} ${result.setup} — ${result.reason}`,
+      "log",
+      {
+        text: formatSignalTelegramLog(config.symbol, c, result, signalId),
+        parseMode: "HTML",
+      },
     );
     pendingPrediction = {
       signalId,
@@ -118,6 +145,19 @@ async function main(): Promise<void> {
     };
     await logRuntime(
       `[pre-prediction] id=${signalId} from=${new Date(c.openTime).toISOString()} predict_next=${result.signal} setup=${result.setup} reason=${result.reason}`,
+      "log",
+      {
+        text: formatPrePredictionTelegramLog({
+          pair: config.symbol,
+          signalId,
+          fromOpenTime: c.openTime,
+          baselineClose: c.close,
+          predicted: result.signal,
+          setup: result.setup,
+          reason: result.reason,
+        }),
+        parseMode: "HTML",
+      },
     );
 
     appendSignalLog({

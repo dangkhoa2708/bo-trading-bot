@@ -49,6 +49,18 @@ function upTrendBase(count: number, start = 100): Candle[] {
   return out;
 }
 
+function downTrendBase(count: number, start = 120): Candle[] {
+  const out: Candle[] = [];
+  let p = start;
+  for (let i = 0; i < count; i++) {
+    const o = p;
+    const c = p - 0.3;
+    out.push(candle(i * 300_000, o, c, 0.25));
+    p = c;
+  }
+  return out;
+}
+
 describe("strategy evaluate", () => {
   it("returns NONE while warming up", () => {
     const candles = upTrendBase(10);
@@ -79,6 +91,19 @@ describe("strategy evaluate", () => {
     const r = evaluate([...base, ...pattern]);
     expect(r.signal).toBe("UP");
     expect(r.setup).toBe("Mirror");
+  });
+
+  it("rejects Mirror UP after dump while still below EMA", () => {
+    const base = downTrendBase(26, 120);
+    const dump = candleOhlc(26 * 300_000, 112.0, 112.2, 102.0, 103.0);
+    const pattern = [
+      dump,
+      candle(27 * 300_000, 103.0, 102.6, 0.15), // weak red
+      candle(28 * 300_000, 102.6, 102.5, 0.15), // weaker red
+      candle(29 * 300_000, 102.5, 103.2, 0.05), // green bounce
+    ];
+    const r = evaluate([...base, ...pattern]);
+    expect(r.signal).toBe("NONE");
   });
 
   it("returns Exhaustion DOWN after 5 green then strong red", () => {
