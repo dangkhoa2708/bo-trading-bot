@@ -78,7 +78,7 @@ export function formatSignalTelegramLog(
   const icon = result.signal === "UP" ? "🟢" : result.signal === "DOWN" ? "🔴" : "⚪️";
   const timeText = fmtGmt7(c.openTime);
   return [
-    `${icon} <b>Signal</b> <code>${escapeHtml(result.signal)}</code> <b>${escapeHtml(result.setup)}</b>`,
+    `${icon} <b>Signal</b> <code>${escapeHtml(result.signal)}</code> <b>${escapeHtml(result.setup)}</b>  <code>${escapeHtml(signalId)}</code>`,
     `<b>Pair</b>: <code>${escapeHtml(pair)}</code>`,
     `<b>Time</b>: <code>${escapeHtml(timeText)}</code> <i>(GMT+7)</i>`,
     `<b>Price</b>: <code>${fmtPrice(c.close)}</code>`,
@@ -101,7 +101,7 @@ export function formatPrePredictionTelegramLog(args: {
   const icon = args.predicted === "UP" ? "📈" : "📉";
   const timeText = fmtGmt7(args.fromOpenTime);
   return [
-    `${icon} <b>Pre‑prediction</b>`,
+    `${icon} <b>Pre‑prediction</b>  <code>${escapeHtml(args.signalId)}</code>`,
     `<b>Pair</b>: <code>${escapeHtml(args.pair)}</code>`,
     `<b>From</b>: <code>${escapeHtml(timeText)}</code> <i>(GMT+7)</i>`,
     `<b>Predict next</b>: <code>${escapeHtml(args.predicted)}</code>  <b>${escapeHtml(args.setup)}</b>`,
@@ -128,7 +128,7 @@ export function formatPostPredictionTelegramLog(args: {
   const fromText = fmtGmt7(args.fromOpenTime);
   const nextText = fmtGmt7(args.nextOpenTime);
   return [
-    `${icon} <b>Post‑prediction</b> <b>${ok ? "RIGHT" : "WRONG"}</b>`,
+    `${icon} <b>Post‑prediction</b> <b>${ok ? "RIGHT" : "WRONG"}</b>  <code>${escapeHtml(args.signalId)}</code>`,
     `<b>Pair</b>: <code>${escapeHtml(args.pair)}</code>`,
     `<b>From</b>: <code>${escapeHtml(fromText)}</code> → <b>Next</b>: <code>${escapeHtml(nextText)}</code> <i>(GMT+7)</i>`,
     `<b>Expected</b>: <code>${escapeHtml(args.expected)}</code>  <b>Actual</b>: <code>${escapeHtml(args.actual)}</code>`,

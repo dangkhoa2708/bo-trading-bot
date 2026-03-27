@@ -15,10 +15,11 @@ export async function logRuntime(
   else if (level === "error") console.error(message);
   else console.log(message);
 
-  const plain = stripAnsi(message);
+  // Only send to Telegram when explicitly requested.
+  if (!telegram) return;
   try {
-    await sendTelegramText(telegram?.text ?? plain, {
-      parseMode: telegram?.parseMode,
+    await sendTelegramText(stripAnsi(telegram.text), {
+      parseMode: telegram.parseMode,
     });
   } catch (e) {
     console.error("[runtime-log] telegram send failed", e);

@@ -21,6 +21,7 @@ type PredictionRow = {
   expected: "UP" | "DOWN" | string;
   actual: "UP" | "DOWN" | "FLAT" | string;
   result: "RIGHT" | "WRONG" | string;
+  setup?: string;
 };
 
 type PredStats = {
@@ -145,8 +146,12 @@ function buildWeeklyReportData(): WeeklyReportData {
     Other: { total: 0, right: 0, wrong: 0, winRatePct: 0 },
   };
   for (const p of predictions) {
-    const sid = p.signalId;
-    const setup = sid ? (setupBySignalId.get(sid) ?? "Other") : "Other";
+    const setup =
+      p.setup && p.setup.trim()
+        ? p.setup
+        : p.signalId
+          ? (setupBySignalId.get(p.signalId) ?? "Other")
+          : "Other";
     const bucket =
       setup === "Momentum" || setup === "Exhaustion" || setup === "Mirror"
         ? setup

@@ -71,7 +71,7 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   mirrorDumpAtrMult: 2.5, // treat a red candle as "dump" if range >= 2.5 * ATR
   mirrorDumpLookback: 3, // block Mirror UP if a dump happened within last N candles (excluding last3)
 
-  dryRun: true,
+  dryRun: false,
 };
 
 export const config: BotConfig = {

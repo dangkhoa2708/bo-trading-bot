@@ -10,7 +10,6 @@ import {
   formatPrePredictionTelegramLog,
   formatSignalTelegramLog,
   formatVerifyLog,
-  formatVerifyTelegramLog,
 } from "./logging/verify.js";
 import { logRuntime } from "./logging/runtime.js";
 import { startTelegramCommandListener } from "./telegram/notify.js";
@@ -110,10 +109,8 @@ async function main(): Promise<void> {
     const decision = dispatcher.shouldEmit(c.openTime, result);
 
     // Verification heartbeat: print one status line for every closed candle.
-    await logRuntime(formatVerifyLog(c, result), "log", {
-      text: formatVerifyTelegramLog(c, result),
-      parseMode: "HTML",
-    });
+    // Temporarily disable Telegram spam for candle-by-candle logs.
+    await logRuntime(formatVerifyLog(c, result), "log");
 
     if (!decision.emit) {
       if (result.signal !== "NONE") {
