@@ -134,13 +134,14 @@ From `src/config.ts`:
 - `candleBuffer=50`
 - `emaPeriod=20`
 - `bodyLookback=20`
-- `momentumBodyVsAvg=0.65`
-- `momentumRangeVsAvg=0.65`
-- `minBodyToRange=0.38`
+- `momentumBodyVsAvg=0.67`
+- `momentumRangeVsAvg=0.67`
+- `minBodyToRange=0.40`
 - `maxCloseToExtremePct=0.42`
 - `exhaustionRunMin=4`
-- `exhaustionRevMinPrevRangeMult=0.3`
-- `exhaustionRevMaxPrevRangeMult=0.5`
+- `exhaustionRevMinPrevRangeMult=0.26`
+- `exhaustionRevMaxPrevRangeMult=0.56`
+- `exhaustionApplyLevelReconfirm=true`
 - `chopLookback=3`
 - `lowVolFactor=0.38`
 - `lowVolCompare=20`
@@ -148,9 +149,11 @@ From `src/config.ts`:
 - `minAtrPct=0.00005`
 - `maxAtrPct=0.03`
 - `sidewaysEmaPct=0.00085`
-- `mirrorMaxBelowEmaPct=0.002`
-- `mirrorDumpAtrMult=2.5`
+- `mirrorMaxBelowEmaPct=0.003`
+- `mirrorDumpAtrMult=3.0`
 - `mirrorDumpLookback=3`
+- `mirrorWeakRedBodyRangePct=0.58`
+- `mirrorDownLightReconfirm=false`
 - `momentumMicroPauseBodyAtrMult=0.35`
 - `momentumMicroPauseBodyVsMedianMult=0.42`
 - `momentumMaxImpulseRun=7`
@@ -160,8 +163,8 @@ From `src/config.ts`:
 - `levelNearPricePct=0.00055`
 - `momentumSameDirWindow=16`
 - `momentumMaxSameDirBarsInWindow=9`
-- `mirrorMaxGreenBodyAtrMult=4.0`
-- `mirrorMaxGreenBodyVsMedianMult=6.5`
+- `mirrorMaxGreenBodyAtrMult=4.2`
+- `mirrorMaxGreenBodyVsMedianMult=7.0`
 - `mirrorMedianBodyLookback=20`
 - `dryRun=false`
 

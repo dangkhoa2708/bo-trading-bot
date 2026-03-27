@@ -78,16 +78,16 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   emaPeriod: 20,
   bodyLookback: 20,
 
-  // Momentum: slightly looser for more setups (still 3 strong candles + EMA side).
-  momentumBodyVsAvg: 0.65,
-  momentumRangeVsAvg: 0.65,
-  minBodyToRange: 0.38,
+  // Momentum: 3 strong candles + EMA side (moderately strict vs avg / range / body quality).
+  momentumBodyVsAvg: 0.67,
+  momentumRangeVsAvg: 0.67,
+  minBodyToRange: 0.40,
   maxCloseToExtremePct: 0.42,
 
-  exhaustionRunMin: 3,
-  exhaustionRevMinPrevRangeMult: 0.22,
-  exhaustionRevMaxPrevRangeMult: 0.62,
-  exhaustionApplyLevelReconfirm: false,
+  exhaustionRunMin: 4,
+  exhaustionRevMinPrevRangeMult: 0.26,
+  exhaustionRevMaxPrevRangeMult: 0.56,
+  exhaustionApplyLevelReconfirm: true,
 
   chopLookback: 3,
   lowVolFactor: 0.38,
@@ -121,8 +121,8 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   momentumSameDirWindow: 16,
   momentumMaxSameDirBarsInWindow: 9,
 
-  mirrorMaxGreenBodyAtrMult: 4.5,
-  mirrorMaxGreenBodyVsMedianMult: 7.5,
+  mirrorMaxGreenBodyAtrMult: 4.2,
+  mirrorMaxGreenBodyVsMedianMult: 7.0,
   mirrorMedianBodyLookback: 20,
 
   dryRun: false,
