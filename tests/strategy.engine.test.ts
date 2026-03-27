@@ -72,15 +72,17 @@ describe("strategy evaluate", () => {
   it("blocks Momentum UP when same-color run exceeds max impulse length", () => {
     const base = upTrendBase(18, 100);
     const lastRed = candle(18 * 300_000, 105.4, 105.1, 0.12);
-    const sixGreens = [
+    const eightGreens = [
       candle(19 * 300_000, 105.1, 106.2, 0.15),
       candle(20 * 300_000, 106.2, 107.4, 0.15),
       candle(21 * 300_000, 107.4, 108.6, 0.15),
       candle(22 * 300_000, 108.6, 109.8, 0.15),
       candle(23 * 300_000, 109.8, 111.0, 0.15),
       candle(24 * 300_000, 111.0, 112.2, 0.15),
+      candle(25 * 300_000, 112.2, 113.4, 0.15),
+      candle(26 * 300_000, 113.4, 114.6, 0.15),
     ];
-    const r = evaluate([...base, lastRed, ...sixGreens]);
+    const r = evaluate([...base, lastRed, ...eightGreens]);
     expect(r.signal).toBe("NONE");
     expect(r.reason).toContain("reconfirm");
   });

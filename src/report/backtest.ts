@@ -1,4 +1,4 @@
-import type { BacktestResult } from "../backtest/runner.js";
+import type { BacktestEmittedRow, BacktestResult } from "../backtest/runner.js";
 
 function escapeHtml(s: string): string {
   return s
@@ -12,40 +12,29 @@ function fmtPrice(n: number): string {
   return n.toFixed(2);
 }
 
-const MAX_DETAIL_ROWS = 25;
+/** Telegram hard limit 4096; stay under and never slice mid-tag. */
+const TELEGRAM_MESSAGE_MAX = 4096;
+const TELEGRAM_SAFE_BUDGET = 3900;
+
+const MAX_DETAIL_ROWS_CANDIDATE = 80;
+
+function formatEmittedRowLine(row: BacktestEmittedRow): string {
+  const pred =
+    row.predictionResult === "RIGHT"
+      ? "✅"
+      : row.predictionResult === "WRONG"
+        ? "❌"
+        : "⏳";
+  const nextPart =
+    row.nextClose !== undefined ? fmtPrice(row.nextClose) : "—";
+  return `• ${pred} <code>${escapeHtml(row.time)}</code> <b>${escapeHtml(row.signal)}</b> ${escapeHtml(row.setup)} — baseline <code>${fmtPrice(row.baselineClose)}</code> → next <code>${nextPart}</code> — <i>${escapeHtml(row.reason)}</i>`;
+}
 
 /** HTML report for Telegram (aligned with daily/weekly summary shape). */
 export function buildBacktestReportHtml(r: BacktestResult): string {
   const d = r.predictionBySetup;
 
-  const detailRows = r.rows.slice(-MAX_DETAIL_ROWS);
-  const detailBlock =
-    detailRows.length > 0
-      ? [
-          "",
-          "🧾 <b>Emitted signals</b> <i>(✅/❌ next-candle prediction, ⏳ pending — newest last, capped)</i>",
-          ...detailRows.map((row) => {
-            const pred =
-              row.predictionResult === "RIGHT"
-                ? "✅"
-                : row.predictionResult === "WRONG"
-                  ? "❌"
-                  : "⏳";
-            const nextPart =
-              row.nextClose !== undefined
-                ? fmtPrice(row.nextClose)
-                : "—";
-            return `• ${pred} <code>${escapeHtml(row.time)}</code> <b>${escapeHtml(row.signal)}</b> ${escapeHtml(row.setup)} — baseline <code>${fmtPrice(row.baselineClose)}</code> → next <code>${nextPart}</code> — <i>${escapeHtml(row.reason)}</i>`;
-          }),
-          r.rows.length > MAX_DETAIL_ROWS
-            ? `<i>… ${r.rows.length - MAX_DETAIL_ROWS} older row(s) omitted</i>`
-            : "",
-        ]
-          .filter(Boolean)
-          .join("\n")
-      : "";
-
-  const text = [
+  const header = [
     "📉 <b>Backtest</b> <i>(GMT+7)</i>",
     `🗓️ <b>Window</b>: last <code>${r.days}</code> day(s) of closed klines (ending now)`,
     `📎 <code>${escapeHtml(r.windowLabelGmt7)}</code>`,
@@ -75,14 +64,41 @@ export function buildBacktestReportHtml(r: BacktestResult): string {
     d.Other.total > 0
       ? `• Other: <code>${d.Other.total}</code> (✅ <code>${d.Other.right}</code> / ❌ <code>${d.Other.wrong}</code>) — <code>${d.Other.winRatePct.toFixed(1)}%</code>`
       : "• Other: <code>0</code>",
-    detailBlock,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].join("\n");
 
-  const maxLen = 4000;
-  if (text.length > maxLen) {
-    return text.slice(0, maxLen - 80) + "\n\n<i>… (truncated for Telegram)</i>";
+  if (r.rows.length === 0) {
+    return header;
+  }
+
+  const intro =
+    "\n\n🧾 <b>Emitted signals</b> <i>(✅/❌ next-candle prediction, ⏳ pending — newest last; list capped by Telegram size)</i>";
+
+  const pool = r.rows.slice(-MAX_DETAIL_ROWS_CANDIDATE);
+  const kept: string[] = [];
+  let used = header.length + intro.length + 120;
+  for (let i = pool.length - 1; i >= 0; i--) {
+    const line = formatEmittedRowLine(pool[i]!);
+    const add = (kept.length === 0 ? "" : "\n") + line;
+    if (used + add.length > TELEGRAM_SAFE_BUDGET) break;
+    kept.push(line);
+    used += add.length;
+  }
+  kept.reverse();
+
+  const shown = kept.length;
+  const notListed = r.rows.length - shown;
+  const tailNote =
+    notListed > 0
+      ? `\n<i>… ${notListed} emit(s) not listed (Telegram ~${TELEGRAM_MESSAGE_MAX} char limit; showing newest ${shown})</i>`
+      : "";
+
+  let text = header + intro + "\n" + kept.join("\n") + tailNote;
+
+  if (text.length > TELEGRAM_MESSAGE_MAX) {
+    return (
+      header +
+      `\n\n<i>Report still too long after trimming. ${r.rows.length} total emits — use fewer days or check logs.</i>`
+    );
   }
   return text;
 }

@@ -72,11 +72,11 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   emaPeriod: 20,
   bodyLookback: 20,
 
-  // Momentum: looser than “strict” profile so grinding trends (some wicks, smaller bodies vs volatile baseline) can qualify.
-  momentumBodyVsAvg: 0.72,
-  momentumRangeVsAvg: 0.72,
-  minBodyToRange: 0.42,
-  maxCloseToExtremePct: 0.38,
+  // Momentum: slightly looser for more setups (still 3 strong candles + EMA side).
+  momentumBodyVsAvg: 0.65,
+  momentumRangeVsAvg: 0.65,
+  minBodyToRange: 0.38,
+  maxCloseToExtremePct: 0.42,
 
   exhaustionRunMin: 4,
   exhaustionRevMinPrevRangeMult: 0.3,
@@ -90,30 +90,30 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   minAtrPct: 0.00005,
   maxAtrPct: 0.03,
 
-  // Narrower “sideways” band: only skip when price is extremely tight to EMA (avoids blocking grind along MA).
-  sidewaysEmaPct: 0.0005,
+  // Wider band vs EMA = fewer false “sideways” skips on slow grinds.
+  sidewaysEmaPct: 0.00085,
 
   // Mirror (Setup C) guards: avoid fake bounces in strong downtrend / post-dump.
   mirrorMaxBelowEmaPct: 0.002, // allow Mirror UP if close is within 0.2% below EMA20
   mirrorDumpAtrMult: 2.5, // treat a red candle as "dump" if range >= 2.5 * ATR
   mirrorDumpLookback: 3, // block Mirror UP if a dump happened within last N candles (excluding last3)
 
-  // Longer-lookback reconfirmation (failure-case synthesis)
+  // Reconfirmation: balanced — fewer vetoes than ultra-strict, still filters worst cases.
   momentumMicroPauseBodyAtrMult: 0.35,
   momentumMicroPauseBodyVsMedianMult: 0.42,
-  momentumMaxImpulseRun: 5, // block 6th+ same-color bar in a run (with micro pauses ignored)
+  momentumMaxImpulseRun: 7,
 
   levelLookbackShort: 10,
   levelLookbackLong: 50,
-  // Conservative: skip when unsure — prefer wider bands (more vetoes near structure).
-  levelNearAtrMult: 0.55,
-  levelNearPricePct: 0.0012,
+  // Tighter “near level” = fewer false vetoes at structure (more signals).
+  levelNearAtrMult: 0.32,
+  levelNearPricePct: 0.00055,
 
-  momentumSameDirWindow: 14,
-  momentumMaxSameDirBarsInWindow: 7,
+  momentumSameDirWindow: 16,
+  momentumMaxSameDirBarsInWindow: 9,
 
-  mirrorMaxGreenBodyAtrMult: 3.2,
-  mirrorMaxGreenBodyVsMedianMult: 5.5,
+  mirrorMaxGreenBodyAtrMult: 4.0,
+  mirrorMaxGreenBodyVsMedianMult: 6.5,
   mirrorMedianBodyLookback: 20,
 
   dryRun: false,
