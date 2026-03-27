@@ -214,8 +214,8 @@ describe("strategy evaluate", () => {
       candle(21 * 300_000, 105.4, 104.9, 0.12),
       candle(22 * 300_000, 104.9, 104.5, 0.12),
       candle(23 * 300_000, 104.5, 104.2, 0.12),
-      // huge reversal range compared to previous candle -> should be rejected
-      candleOhlc(24 * 300_000, 104.2, 106.6, 104.0, 106.0),
+      // huge reversal vs prev (exhaustion off) — close not at extreme so Mirror UP does not fire
+      candleOhlc(24 * 300_000, 104.2, 106.6, 104.0, 105.0),
     ];
     const r = evaluate([...base, ...pattern]);
     expect(r.signal).toBe("NONE");
@@ -228,8 +228,8 @@ describe("strategy evaluate", () => {
       candle(21 * 300_000, 105.4, 104.9, 0.12),
       candle(22 * 300_000, 104.9, 104.5, 0.12),
       candle(23 * 300_000, 104.5, 104.2, 0.12), // prev range ~0.54
-      // tiny reversal range << 0.4x prev -> reject
-      candle(24 * 300_000, 104.2, 104.3, 0.03),
+      // rev range / prev range below exhaustion min — close not at extreme so Mirror UP does not fire
+      candleOhlc(24 * 300_000, 104.18, 104.26, 104.15, 104.19),
     ];
     const r = evaluate([...base, ...pattern]);
     expect(r.signal).toBe("NONE");

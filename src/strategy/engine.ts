@@ -203,6 +203,7 @@ function exhaustionPassesReconfirm(
   candles: Candle[],
   ex: { signal: "UP" | "DOWN" },
 ): boolean {
+  if (!config.exhaustionApplyLevelReconfirm) return true;
   const atr = atrLast(candles, config.atrPeriod);
   if (ex.signal === "DOWN" && nearSupport(candles, atr)) return false;
   if (ex.signal === "UP" && nearResistance(candles, atr)) return false;
@@ -244,6 +245,12 @@ function momentumPassesReconfirm(
 /** Mirror UP: spike cap only (level veto is for Momentum; mirrors often test prior highs). */
 function mirrorUpPassesReconfirm(candles: Candle[]): boolean {
   return mirrorGreenNotSpike(candles);
+}
+
+/** Mirror DOWN fallback: impulse run only (no level / same-dir window vetoes). */
+function mirrorDownPassesReconfirm(candles: Candle[]): boolean {
+  const runLen = sameDirectionRunLength(candles, "DOWN");
+  return runLen <= config.momentumMaxImpulseRun;
 }
 
 function momentumWindow(
@@ -398,7 +405,8 @@ function mirrorWeakRedStrongGreen(
   }
 
   const weakening = body(a) > body(b);
-  const weakRedBody = body(b) < range(b) * 0.55;
+  const weakRedBody =
+    body(b) < range(b) * config.mirrorWeakRedBodyRangePct;
   const strongGreen = body(c) / range(c) >= config.minBodyToRange;
   if (weakening && weakRedBody && strongGreen && closeNearExtreme(c, "UP")) {
     return { ok: true, note: "Setup C: weakening reds + strong green" };
@@ -482,11 +490,16 @@ export function evaluate(candles: Candle[]): StrategyResult {
       };
     }
     if (mom.dir === "DOWN") {
-      if (!momentumPassesReconfirm(candles, "DOWN")) {
+      const mirrorOk = config.mirrorDownLightReconfirm
+        ? mirrorDownPassesReconfirm(candles)
+        : momentumPassesReconfirm(candles, "DOWN");
+      if (!mirrorOk) {
         return {
           signal: "NONE",
           setup: "None",
-          reason: "reconfirm: mirror DOWN blocked (impulse or levels)",
+          reason: config.mirrorDownLightReconfirm
+            ? "reconfirm: mirror DOWN blocked (impulse run)"
+            : "reconfirm: mirror DOWN blocked (impulse or levels)",
         };
       }
       return {

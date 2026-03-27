@@ -24,6 +24,17 @@ function escapeHtml(s: string): string {
     .replaceAll('"', "&quot;");
 }
 
+/** Telegram HTML line: Momentum = low confidence; Exhaustion/Mirror = medium. */
+export function setupConfidenceHtmlLine(setup: string): string | null {
+  if (setup === "Momentum") {
+    return "⚠️ <b>Confidence</b>: <i>LOW</i>";
+  }
+  if (setup === "Exhaustion" || setup === "Mirror") {
+    return "📊 <b>Confidence</b>: <i>MEDIUM</i>";
+  }
+  return null;
+}
+
 function colorize(text: string, color: string): string {
   return `${color}${text}${ANSI.reset}`;
 }
@@ -83,13 +94,15 @@ export function formatSignalTelegramLog(
     charts !== undefined
       ? [
           "",
-          "📊 <b>Live chart</b> — tap link or button below <i>(opens in Telegram browser)</i>",
+          "🗺 <b>Live chart</b> — tap link or button below <i>(opens in Telegram browser)</i>",
           `• <a href="${escapeHtml(charts.tradingViewUrl)}">TradingView</a> <i>(${escapeHtml(pair)})</i>`,
           charts.tradingViewUrl,
         ]
       : [];
+  const conf = setupConfidenceHtmlLine(result.setup);
   return [
     `${icon} <b>Signal</b> <code>${escapeHtml(result.signal)}</code> <b>${escapeHtml(result.setup)}</b>  <code>${escapeHtml(signalId)}</code>`,
+    ...(conf !== null ? [conf] : []),
     `<b>Pair</b>: <code>${escapeHtml(pair)}</code>`,
     `<b>Time</b>: <code>${escapeHtml(timeText)}</code> <i>(GMT+7)</i>`,
     `<b>Price</b>: <code>${fmtPrice(c.close)}</code>`,
@@ -130,8 +143,10 @@ export function formatPrePredictionTelegramLog(args: {
 }): string {
   const icon = args.predicted === "UP" ? "📈" : "📉";
   const timeText = fmtGmt7(args.fromOpenTime);
+  const conf = setupConfidenceHtmlLine(args.setup);
   return [
     `${icon} <b>Pre‑prediction</b>  <code>${escapeHtml(args.signalId)}</code>`,
+    ...(conf !== null ? [conf] : []),
     `<b>Pair</b>: <code>${escapeHtml(args.pair)}</code>`,
     `<b>From</b>: <code>${escapeHtml(timeText)}</code> <i>(GMT+7)</i>`,
     `<b>Predict next</b>: <code>${escapeHtml(args.predicted)}</code>  <b>${escapeHtml(args.setup)}</b>`,
@@ -157,8 +172,10 @@ export function formatPostPredictionTelegramLog(args: {
   const icon = ok ? "✅" : "❌";
   const fromText = fmtGmt7(args.fromOpenTime);
   const nextText = fmtGmt7(args.nextOpenTime);
+  const conf = setupConfidenceHtmlLine(args.setup);
   return [
     `${icon} <b>Post‑prediction</b> <b>${ok ? "RIGHT" : "WRONG"}</b>  <code>${escapeHtml(args.signalId)}</code>`,
+    ...(conf !== null ? [conf] : []),
     `<b>Pair</b>: <code>${escapeHtml(args.pair)}</code>`,
     `<b>From</b>: <code>${escapeHtml(fromText)}</code> → <b>Next</b>: <code>${escapeHtml(nextText)}</code> <i>(GMT+7)</i>`,
     `<b>Expected</b>: <code>${escapeHtml(args.expected)}</code>  <b>Actual</b>: <code>${escapeHtml(args.actual)}</code>`,

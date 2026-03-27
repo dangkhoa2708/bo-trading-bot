@@ -16,6 +16,8 @@ export type BotConfig = {
   exhaustionRunMin: number;
   exhaustionRevMinPrevRangeMult: number;
   exhaustionRevMaxPrevRangeMult: number;
+  /** If false, Exhaustion skips near support/resistance veto (more signals). */
+  exhaustionApplyLevelReconfirm: boolean;
 
   chopLookback: number;
   lowVolFactor: number;
@@ -30,6 +32,10 @@ export type BotConfig = {
   mirrorMaxBelowEmaPct: number;
   mirrorDumpAtrMult: number;
   mirrorDumpLookback: number;
+  /** Mirror UP: weak red body must be below this fraction of candle range (higher = looser). */
+  mirrorWeakRedBodyRangePct: number;
+  /** Mirror DOWN (Setup C fallback): only cap impulse run, not levels/window. */
+  mirrorDownLightReconfirm: boolean;
 
   /** Opposite-color body ≤ this × ATR counts as micro pause (does not reset run). */
   momentumMicroPauseBodyAtrMult: number;
@@ -78,9 +84,10 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   minBodyToRange: 0.38,
   maxCloseToExtremePct: 0.42,
 
-  exhaustionRunMin: 4,
-  exhaustionRevMinPrevRangeMult: 0.3,
-  exhaustionRevMaxPrevRangeMult: 0.5,
+  exhaustionRunMin: 3,
+  exhaustionRevMinPrevRangeMult: 0.22,
+  exhaustionRevMaxPrevRangeMult: 0.62,
+  exhaustionApplyLevelReconfirm: false,
 
   chopLookback: 3,
   lowVolFactor: 0.38,
@@ -94,9 +101,11 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   sidewaysEmaPct: 0.00085,
 
   // Mirror (Setup C) guards: avoid fake bounces in strong downtrend / post-dump.
-  mirrorMaxBelowEmaPct: 0.002, // allow Mirror UP if close is within 0.2% below EMA20
-  mirrorDumpAtrMult: 2.5, // treat a red candle as "dump" if range >= 2.5 * ATR
-  mirrorDumpLookback: 3, // block Mirror UP if a dump happened within last N candles (excluding last3)
+  mirrorMaxBelowEmaPct: 0.004,
+  mirrorDumpAtrMult: 3.5,
+  mirrorDumpLookback: 2,
+  mirrorWeakRedBodyRangePct: 0.62,
+  mirrorDownLightReconfirm: true,
 
   // Reconfirmation: balanced — fewer vetoes than ultra-strict, still filters worst cases.
   momentumMicroPauseBodyAtrMult: 0.35,
@@ -112,8 +121,8 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   momentumSameDirWindow: 16,
   momentumMaxSameDirBarsInWindow: 9,
 
-  mirrorMaxGreenBodyAtrMult: 4.0,
-  mirrorMaxGreenBodyVsMedianMult: 6.5,
+  mirrorMaxGreenBodyAtrMult: 4.5,
+  mirrorMaxGreenBodyVsMedianMult: 7.5,
   mirrorMedianBodyLookback: 20,
 
   dryRun: false,
