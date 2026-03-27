@@ -117,69 +117,86 @@ function momentumWindow(
 function exhaustion(
   candles: Candle[],
 ): { ok: boolean; signal: "UP" | "DOWN"; note: string } {
-  const need = config.exhaustionRunMax + 1;
+  const need = config.exhaustionRunMin + 1;
   if (candles.length < need + config.bodyLookback) {
     return { ok: false, signal: "UP", note: "short history" };
   }
 
-  for (const runLen of [5, 4]) {
-    const rev = candles[candles.length - 1]!;
-    const run = candles.slice(-(runLen + 1), -1);
-    if (run.length !== runLen) continue;
-
-    const runGreen = run.every(isGreen);
-    const runRed = run.every(isRed);
-    if (!runGreen && !runRed) continue;
-
-    if (runGreen && !isRed(rev)) continue;
-    if (runRed && !isGreen(rev)) continue;
-
-    const prev = run[run.length - 1]!;
-    const prevRange = range(prev);
-    const revRange = range(rev);
-    if (prevRange <= 0) continue;
-    const revVsPrev = revRange / prevRange;
-    if (
-      revVsPrev < config.exhaustionRevMinPrevRangeMult ||
-      revVsPrev > config.exhaustionRevMaxPrevRangeMult
-    ) {
-      continue;
-    }
-
-    const baseline = candles.slice(
-      -(runLen + 1 + config.bodyLookback),
-      -(runLen + 1),
-    );
-    const baseAvg = avgBody(baseline);
-    if (baseAvg === 0) continue;
-    if (body(rev) < baseAvg * 1.0) continue;
-    if (!strongClose(rev)) continue;
-    const revDir: "UP" | "DOWN" = isGreen(rev) ? "UP" : "DOWN";
-    if (!closeNearExtreme(rev, revDir)) continue;
-
-    const bodies = run.map(body);
-    const weakBodies =
-      bodies[0]! > bodies[bodies.length - 1]! ||
-      bodies.slice(-2).every((b, i, arr) => i === 0 || b <= arr[i - 1]!);
-
-    const wicks =
-      runGreen ? run.map(upperWick) : run.map(lowerWick);
-    const wickOk =
-      wicks[wicks.length - 1]! >= wicks[wicks.length - 2]! ||
-      wicks.slice(-2).reduce((a, b) => a + b, 0) >=
-        wicks.slice(0, 2).reduce((a, b) => a + b, 0);
-
-    if (!weakBodies && !wickOk) continue;
-
-    const signal: "UP" | "DOWN" = runGreen ? "DOWN" : "UP";
-    return {
-      ok: true,
-      signal,
-      note: `exhaustion after ${runLen} ${runGreen ? "green" : "red"} + strong ${isGreen(rev) ? "green" : "red"} close`,
-    };
+  const rev = candles[candles.length - 1]!;
+  const prev = candles[candles.length - 2]!;
+  const runGreen = isGreen(prev);
+  const runRed = isRed(prev);
+  if (!runGreen && !runRed) {
+    return { ok: false, signal: "UP", note: "no exhaustion" };
   }
 
-  return { ok: false, signal: "UP", note: "no exhaustion" };
+  if (runGreen && !isRed(rev)) return { ok: false, signal: "UP", note: "no exhaustion" };
+  if (runRed && !isGreen(rev)) return { ok: false, signal: "UP", note: "no exhaustion" };
+
+  let runLen = 0;
+  for (let i = candles.length - 2; i >= 0; i--) {
+    const c = candles[i]!;
+    if ((runGreen && isGreen(c)) || (runRed && isRed(c))) {
+      runLen++;
+      continue;
+    }
+    break;
+  }
+  if (runLen < config.exhaustionRunMin) {
+    return { ok: false, signal: "UP", note: "no exhaustion" };
+  }
+
+  // Use a bounded recent segment of the run for quality checks, while allowing
+  // eligibility from any longer streak (>= EXHAUSTION_RUN_MIN).
+  const analysisRunLen = Math.max(config.exhaustionRunMin, 4);
+  const run = candles.slice(-(analysisRunLen + 1), -1);
+
+  const prevRange = range(prev);
+  const revRange = range(rev);
+  if (prevRange <= 0) return { ok: false, signal: "UP", note: "no exhaustion" };
+  const revVsPrev = revRange / prevRange;
+  if (
+    revVsPrev < config.exhaustionRevMinPrevRangeMult ||
+    revVsPrev > config.exhaustionRevMaxPrevRangeMult
+  ) {
+    return { ok: false, signal: "UP", note: "no exhaustion" };
+  }
+
+  const runStart = candles.length - 1 - runLen;
+  const baselineStart = Math.max(0, runStart - config.bodyLookback);
+  let baseline = candles.slice(baselineStart, runStart);
+  if (baseline.length === 0) {
+    baseline = candles.slice(-(config.bodyLookback + 1), -1);
+  }
+  const baseAvg = avgBody(baseline);
+  if (baseAvg === 0) return { ok: false, signal: "UP", note: "no exhaustion" };
+  if (body(rev) < baseAvg * 1.0) return { ok: false, signal: "UP", note: "no exhaustion" };
+  if (!strongClose(rev)) return { ok: false, signal: "UP", note: "no exhaustion" };
+  const revDir: "UP" | "DOWN" = isGreen(rev) ? "UP" : "DOWN";
+  if (!closeNearExtreme(rev, revDir)) return { ok: false, signal: "UP", note: "no exhaustion" };
+
+  const bodies = run.map(body);
+  const weakBodies =
+    bodies[0]! > bodies[bodies.length - 1]! ||
+    bodies.slice(-2).every((b, i, arr) => i === 0 || b <= arr[i - 1]!);
+
+  const wicks =
+    runGreen ? run.map(upperWick) : run.map(lowerWick);
+  const wickOk =
+    wicks[wicks.length - 1]! >= wicks[wicks.length - 2]! ||
+    wicks.slice(-2).reduce((a, b) => a + b, 0) >=
+      wicks.slice(0, 2).reduce((a, b) => a + b, 0);
+
+  if (!weakBodies && !wickOk) {
+    return { ok: false, signal: "UP", note: "no exhaustion" };
+  }
+
+  const signal: "UP" | "DOWN" = runGreen ? "DOWN" : "UP";
+  return {
+    ok: true,
+    signal,
+    note: `exhaustion after ${runLen} ${runGreen ? "green" : "red"} + strong ${isGreen(rev) ? "green" : "red"} close`,
+  };
 }
 
 /** Setup C (part): weak reds + strong green → UP */

@@ -45,7 +45,7 @@ For setup, run instructions, and operational notes, see `README.md`.
 
 ### Setup B: Exhaustion Reversal
 
-- Prior run has 4-5 same-color candles
+- Prior run has at least `EXHAUSTION_RUN_MIN` same-color candles
 - Latest candle is opposite color with strong body/close
 - Latest reversal candle must close near its directional extreme (`MAX_CLOSE_TO_EXTREME_PCT`)
 - Latest reversal candle range must be within previous candle range ×
@@ -111,7 +111,6 @@ From `env.example`:
 - `MIN_BODY_TO_RANGE=0.55`
 - `MAX_CLOSE_TO_EXTREME_PCT=0.25`
 - `EXHAUSTION_RUN_MIN=4`
-- `EXHAUSTION_RUN_MAX=5`
 - `EXHAUSTION_REV_MIN_PREV_RANGE_MULT=0.4`
 - `EXHAUSTION_REV_MAX_PREV_RANGE_MULT=0.7`
 - `CHOP_LOOKBACK=4`

@@ -97,6 +97,23 @@ describe("strategy evaluate", () => {
     expect(r.setup).toBe("Exhaustion");
   });
 
+  it("returns Exhaustion DOWN after 6 green then strong red", () => {
+    const base = upTrendBase(20, 100);
+    const runAndReversal = [
+      candle(20 * 300_000, 104.0, 105.1, 0.2),
+      candle(21 * 300_000, 105.1, 106.0, 0.2),
+      candle(22 * 300_000, 106.0, 106.7, 0.2),
+      candle(23 * 300_000, 106.7, 107.3, 0.2),
+      candle(24 * 300_000, 107.3, 107.8, 0.2),
+      candle(25 * 300_000, 107.8, 108.2, 0.2), // prev range ~0.8
+      // reversal range ~0.52 => inside [0.4, 0.7]
+      candle(26 * 300_000, 108.2, 107.74, 0.03),
+    ];
+    const r = evaluate([...base, ...runAndReversal]);
+    expect(r.signal).toBe("DOWN");
+    expect(r.setup).toBe("Exhaustion");
+  });
+
   it("returns NONE for choppy alternating candles", () => {
     const base = upTrendBase(22, 100);
     const choppyTail = [
@@ -125,9 +142,9 @@ describe("strategy evaluate", () => {
   it("rejects momentum when candle range does not expand enough", () => {
     const base = upTrendBase(22, 100);
     const last3 = [
-      candle(22 * 300_000, 106.6, 107.2, 0.03),
-      candle(23 * 300_000, 107.2, 107.8, 0.03),
-      candle(24 * 300_000, 107.8, 108.4, 0.03),
+      candle(22 * 300_000, 106.6, 106.7, 0.02),
+      candle(23 * 300_000, 106.7, 106.8, 0.02),
+      candle(24 * 300_000, 106.8, 106.9, 0.02),
     ];
     const r = evaluate([...base, ...last3]);
     expect(r.signal).toBe("NONE");

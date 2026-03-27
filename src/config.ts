@@ -26,7 +26,6 @@ export const config = {
   maxCloseToExtremePct: num(process.env.MAX_CLOSE_TO_EXTREME_PCT, 0.25),
   /** Exhaustion run length (same color) */
   exhaustionRunMin: num(process.env.EXHAUSTION_RUN_MIN, 4),
-  exhaustionRunMax: num(process.env.EXHAUSTION_RUN_MAX, 5),
   /** Exhaustion: reversal range should be within previous range × [min, max] */
   exhaustionRevMinPrevRangeMult: num(
     process.env.EXHAUSTION_REV_MIN_PREV_RANGE_MULT,
