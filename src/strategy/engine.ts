@@ -75,6 +75,143 @@ function closeNearExtreme(c: Candle, dir: "UP" | "DOWN"): boolean {
   return (c.close - c.low) / r <= config.maxCloseToExtremePct;
 }
 
+function priorSwingLow(candles: Candle[], lookback: number): number | null {
+  if (candles.length < lookback + 1) return null;
+  const slice = candles.slice(-(lookback + 1), -1);
+  return Math.min(...slice.map((c) => c.low));
+}
+
+function priorSwingHigh(candles: Candle[], lookback: number): number | null {
+  if (candles.length < lookback + 1) return null;
+  const slice = candles.slice(-(lookback + 1), -1);
+  return Math.max(...slice.map((c) => c.high));
+}
+
+/**
+ * Near support: price is sitting on / testing support from above (not already broken down).
+ * Avoid `close - low <= buf` when close is far below (that is a breakdown, not a bounce setup).
+ */
+function nearSupport(candles: Candle[], atr: number | null): boolean {
+  if (atr === null || atr <= 0) return false;
+  const last = candles[candles.length - 1]!;
+  const buf = atr * config.levelNearAtrMult;
+  const s1 = priorSwingLow(candles, config.levelLookbackShort);
+  const s2 = priorSwingLow(candles, config.levelLookbackLong);
+  const test = (s: number | null) =>
+    s !== null &&
+    last.close >= s &&
+    last.close - s <= buf;
+  return test(s1) || test(s2);
+}
+
+/**
+ * Near resistance: testing the zone from below (not already a clean breakout above).
+ */
+function nearResistance(candles: Candle[], atr: number | null): boolean {
+  if (atr === null || atr <= 0) return false;
+  const last = candles[candles.length - 1]!;
+  const buf = atr * config.levelNearAtrMult;
+  const r1 = priorSwingHigh(candles, config.levelLookbackShort);
+  const r2 = priorSwingHigh(candles, config.levelLookbackLong);
+  const test = (r: number | null) =>
+    r !== null &&
+    last.close <= r &&
+    r - last.close <= buf;
+  return test(r1) || test(r2);
+}
+
+/**
+ * Count consecutive same-direction closes from the last candle; micro opposite
+ * bodies (≤ microMax) do not reset the run.
+ */
+function sameDirectionRunLength(
+  candles: Candle[],
+  direction: "UP" | "DOWN",
+): number {
+  if (candles.length === 0) return 0;
+  const atr = atrLast(candles, config.atrPeriod);
+  const medB = median(candles.slice(-20).map(body));
+  const microAtr =
+    atr !== null && atr > 0 ? atr * config.momentumMicroPauseBodyAtrMult : Infinity;
+  const microMed = medB * config.momentumMicroPauseBodyVsMedianMult;
+  const micro = Math.max(Math.min(microAtr, microMed), 1e-9);
+
+  let i = candles.length - 1;
+  let count = 0;
+  if (direction === "UP") {
+    if (!isGreen(candles[i]!)) return 0;
+    while (i >= 0) {
+      const c = candles[i]!;
+      if (isGreen(c)) {
+        count++;
+        i--;
+      } else if (isRed(c) && body(c) <= micro) {
+        i--;
+      } else {
+        break;
+      }
+    }
+  } else {
+    if (!isRed(candles[i]!)) return 0;
+    while (i >= 0) {
+      const c = candles[i]!;
+      if (isRed(c)) {
+        count++;
+        i--;
+      } else if (isGreen(c) && body(c) <= micro) {
+        i--;
+      } else {
+        break;
+      }
+    }
+  }
+  return count;
+}
+
+function mirrorGreenNotSpike(candles: Candle[]): boolean {
+  const c = candles[candles.length - 1]!;
+  const b = body(c);
+  const atr = atrLast(candles, config.atrPeriod);
+  const lb = Math.min(
+    config.mirrorMedianBodyLookback,
+    candles.length,
+  );
+  const med = median(candles.slice(-lb).map(body));
+  if (med <= 0) return true;
+  if (b > med * config.mirrorMaxGreenBodyVsMedianMult) return false;
+  if (atr !== null && atr > 0 && b > atr * config.mirrorMaxGreenBodyAtrMult) {
+    return false;
+  }
+  return true;
+}
+
+function exhaustionPassesReconfirm(
+  candles: Candle[],
+  ex: { signal: "UP" | "DOWN" },
+): boolean {
+  const atr = atrLast(candles, config.atrPeriod);
+  if (ex.signal === "DOWN" && nearSupport(candles, atr)) return false;
+  if (ex.signal === "UP" && nearResistance(candles, atr)) return false;
+  return true;
+}
+
+function momentumPassesReconfirm(
+  candles: Candle[],
+  dir: "UP" | "DOWN",
+): boolean {
+  const atr = atrLast(candles, config.atrPeriod);
+  const runLen = sameDirectionRunLength(candles, dir);
+  if (runLen > config.momentumMaxImpulseRun) return false;
+  if (dir === "DOWN" && nearSupport(candles, atr)) return false;
+  if (dir === "UP" && nearResistance(candles, atr)) return false;
+  return true;
+}
+
+/** Mirror UP: spike cap only (level veto is for Momentum; mirrors often test prior highs). */
+function mirrorUpPassesReconfirm(candles: Candle[]): boolean {
+  return mirrorGreenNotSpike(candles);
+}
+
 function momentumWindow(
   candles: Candle[],
 ): { ok: boolean; dir: "UP" | "DOWN"; note: string } {
@@ -267,7 +404,7 @@ export function evaluate(candles: Candle[]): StrategyResult {
   const last = candles[candles.length - 1]!;
 
   const ex = exhaustion(candles);
-  if (ex.ok) {
+  if (ex.ok && exhaustionPassesReconfirm(candles, ex)) {
     return {
       signal: ex.signal,
       setup: "Exhaustion",
@@ -276,13 +413,20 @@ export function evaluate(candles: Candle[]): StrategyResult {
   }
 
   const mirUp = mirrorWeakRedStrongGreen(candles, ema);
-  if (mirUp.ok) {
+  if (mirUp.ok && mirrorUpPassesReconfirm(candles)) {
     return { signal: "UP", setup: "Mirror", reason: mirUp.note };
   }
 
   const mom = momentumWindow(candles);
   if (mom.ok) {
     if (mom.dir === "UP" && last.close > ema) {
+      if (!momentumPassesReconfirm(candles, "UP")) {
+        return {
+          signal: "NONE",
+          setup: "None",
+          reason: "reconfirm: momentum UP blocked (impulse or levels)",
+        };
+      }
       return {
         signal: "UP",
         setup: "Momentum",
@@ -290,6 +434,13 @@ export function evaluate(candles: Candle[]): StrategyResult {
       };
     }
     if (mom.dir === "DOWN" && last.close < ema) {
+      if (!momentumPassesReconfirm(candles, "DOWN")) {
+        return {
+          signal: "NONE",
+          setup: "None",
+          reason: "reconfirm: momentum DOWN blocked (impulse or levels)",
+        };
+      }
       return {
         signal: "DOWN",
         setup: "Momentum",
@@ -297,6 +448,13 @@ export function evaluate(candles: Candle[]): StrategyResult {
       };
     }
     if (mom.dir === "DOWN") {
+      if (!momentumPassesReconfirm(candles, "DOWN")) {
+        return {
+          signal: "NONE",
+          setup: "None",
+          reason: "reconfirm: mirror DOWN blocked (impulse or levels)",
+        };
+      }
       return {
         signal: "DOWN",
         setup: "Mirror",

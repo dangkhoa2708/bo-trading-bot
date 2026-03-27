@@ -42,6 +42,7 @@ For setup, run instructions, and operational notes, see `README.md`.
 - EMA filter:
   - Bullish momentum valid only if close > EMA20 -> signal `UP`
   - Bearish momentum valid only if close < EMA20 -> signal `DOWN`
+- **Reconfirmation (longer lookback)** — applied after the short-window checks above pass (see **Reconfirmation** below). Momentum can still return `NONE` with reason `reconfirm: momentum … blocked`.
 
 **Why you might see no momentum during a “clear” chart uptrend**
 
@@ -62,23 +63,41 @@ For setup, run instructions, and operational notes, see `README.md`.
   - increasing wick pressure on trend side
 - If prior run was green -> signal `DOWN`
 - If prior run was red -> signal `UP`
+- **Reconfirmation:** if the exhaustion candidate fails level checks (near support for `DOWN`, near resistance for `UP`), evaluation **continues** to Mirror and Momentum instead of returning `NONE`.
 
 ### Setup C: Mirror Cases
 
 - Weak red sequence followed by strong green close -> signal `UP`
   - Guard: require close to be near/above EMA20 (avoid dead-cat bounces below EMA)
   - Guard: skip Mirror UP for a short window after a large red dump candle (range vs ATR)
-- Strong red momentum can still emit `DOWN` as mirror when momentum-down exists but EMA filter blocks classic momentum condition
+  - **Reconfirmation:** green body must not exceed median / ATR spike caps (`mirrorMaxGreenBodyVsMedianMult`, `mirrorMaxGreenBodyAtrMult`); **no** near-resistance veto on Mirror UP (Momentum uses that filter).
+- Strong red momentum can still emit `DOWN` as mirror when momentum-down exists but EMA filter blocks classic momentum condition — **same reconfirmation as Momentum DOWN** (impulse run + near support).
+
+## Reconfirmation (implemented)
+
+Rationale: [`learning/failure-cases/synthesis-2026-03.md`](learning/failure-cases/synthesis-2026-03.md).
+
+After a **candidate** is identified, the engine re-checks wider context before emitting:
+
+| Candidate | Extra checks |
+|-----------|----------------|
+| **Exhaustion** | Near support (for `DOWN`) or near resistance (for `UP`) — if fail, **fall through** to Mirror/Momentum. |
+| **Mirror UP** | Spike filter on the green candle (vs median body and ATR). |
+| **Momentum UP** | Same-direction run length ≤ `momentumMaxImpulseRun` (micro opposite bodies ≤ `min(ATR×momentumMicroPauseBodyAtrMult, median×momentumMicroPauseBodyVsMedianMult)` do not reset the run); not testing resistance from below (prior swing highs over short/long lookbacks, excluding last candle). |
+| **Momentum DOWN** | Same run-length cap; not testing support from above (prior swing lows). |
+| **Mirror DOWN** (fallback) | Same as Momentum DOWN. |
+
+**Levels:** “Near support” means `close ≥` prior swing low and `close − low ≤ levelNearAtrMult × ATR`. “Near resistance” means `close ≤` prior swing high and `high − close ≤ levelNearAtrMult × ATR` (testing the zone from the correct side; clean breakouts above/below are not treated as “at the level”).
 
 ## Setup Evaluation Priority
 
 Evaluation order is fixed:
 
 1. Skip filters
-2. Exhaustion
-3. Mirror (weak red -> strong green)
-4. Momentum (+ EMA side filter)
-5. Mirror fallback for strong red momentum
+2. Exhaustion — if it matches **and** passes reconfirmation, emit; else if it matches but reconfirmation fails, **continue**
+3. Mirror (weak red -> strong green) — if it matches **and** passes reconfirmation, emit
+4. Momentum (+ EMA side filter) — if it matches **and** passes reconfirmation, emit
+5. Mirror fallback for strong red momentum — if it matches **and** passes reconfirmation, emit
 6. Otherwise `NONE`
 
 ## Signal Dispatch Rules
@@ -129,6 +148,18 @@ From `src/config.ts`:
 - `minAtrPct=0.00005`
 - `maxAtrPct=0.03`
 - `sidewaysEmaPct=0.0005`
+- `mirrorMaxBelowEmaPct=0.002`
+- `mirrorDumpAtrMult=2.5`
+- `mirrorDumpLookback=3`
+- `momentumMicroPauseBodyAtrMult=0.35`
+- `momentumMicroPauseBodyVsMedianMult=0.42`
+- `momentumMaxImpulseRun=5`
+- `levelLookbackShort=10`
+- `levelLookbackLong=50`
+- `levelNearAtrMult=0.22`
+- `mirrorMaxGreenBodyAtrMult=4.5`
+- `mirrorMaxGreenBodyVsMedianMult=7`
+- `mirrorMedianBodyLookback=20`
 - `dryRun=false`
 
 ## Change Control
