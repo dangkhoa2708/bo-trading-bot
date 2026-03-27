@@ -84,12 +84,13 @@ describe("strategy evaluate", () => {
   it("returns Exhaustion DOWN after 5 green then strong red", () => {
     const base = upTrendBase(20, 100);
     const runAndReversal = [
-      candle(20 * 300_000, 104.0, 104.9),
-      candle(21 * 300_000, 104.9, 105.6),
-      candle(22 * 300_000, 105.6, 106.1),
-      candle(23 * 300_000, 106.1, 106.4),
-      candle(24 * 300_000, 106.4, 106.6),
-      candle(25 * 300_000, 106.6, 105.1),
+      candle(20 * 300_000, 104.0, 105.0, 0.2),
+      candle(21 * 300_000, 105.0, 105.8, 0.2),
+      candle(22 * 300_000, 105.8, 106.4, 0.2),
+      candle(23 * 300_000, 106.4, 106.9, 0.2),
+      candle(24 * 300_000, 106.9, 107.3, 0.3), // prev range ~1.0
+      // reversal range ~0.6 => inside [0.4, 0.7]
+      candle(25 * 300_000, 107.3, 106.9, 0.1),
     ];
     const r = evaluate([...base, ...runAndReversal]);
     expect(r.signal).toBe("DOWN");
@@ -158,5 +159,33 @@ describe("strategy evaluate", () => {
     const r = evaluate(candles);
     expect(r.signal).toBe("NONE");
     expect(r.reason).toContain("atr out of band");
+  });
+
+  it("rejects exhaustion when reversal candle is bigger than previous candle", () => {
+    const base = upTrendBase(20, 100);
+    const pattern = [
+      candle(20 * 300_000, 106.0, 105.4, 0.12),
+      candle(21 * 300_000, 105.4, 104.9, 0.12),
+      candle(22 * 300_000, 104.9, 104.5, 0.12),
+      candle(23 * 300_000, 104.5, 104.2, 0.12),
+      // huge reversal range compared to previous candle -> should be rejected
+      candleOhlc(24 * 300_000, 104.2, 106.6, 104.0, 106.0),
+    ];
+    const r = evaluate([...base, ...pattern]);
+    expect(r.signal).toBe("NONE");
+  });
+
+  it("rejects exhaustion when reversal candle is too small vs previous", () => {
+    const base = upTrendBase(20, 100);
+    const pattern = [
+      candle(20 * 300_000, 106.0, 105.4, 0.12),
+      candle(21 * 300_000, 105.4, 104.9, 0.12),
+      candle(22 * 300_000, 104.9, 104.5, 0.12),
+      candle(23 * 300_000, 104.5, 104.2, 0.12), // prev range ~0.54
+      // tiny reversal range << 0.4x prev -> reject
+      candle(24 * 300_000, 104.2, 104.3, 0.03),
+    ];
+    const r = evaluate([...base, ...pattern]);
+    expect(r.signal).toBe("NONE");
   });
 });

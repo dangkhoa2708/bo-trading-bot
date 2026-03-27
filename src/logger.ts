@@ -4,6 +4,7 @@ import path from "node:path";
 const logDir = path.join(process.cwd(), "logs");
 
 export type LogRow = {
+  signalId: string;
   ts: string;
   openTime: number;
   price: number;
@@ -13,6 +14,7 @@ export type LogRow = {
 };
 
 export type PredictionLogRow = {
+  signalId: string;
   ts: string;
   fromOpenTime: number;
   baselineClose: number;

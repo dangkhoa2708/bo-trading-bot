@@ -48,6 +48,8 @@ For setup, run instructions, and operational notes, see `README.md`.
 - Prior run has 4-5 same-color candles
 - Latest candle is opposite color with strong body/close
 - Latest reversal candle must close near its directional extreme (`MAX_CLOSE_TO_EXTREME_PCT`)
+- Latest reversal candle range must be within previous candle range ×
+  [`EXHAUSTION_REV_MIN_PREV_RANGE_MULT`, `EXHAUSTION_REV_MAX_PREV_RANGE_MULT`]
 - Weakening evidence required from run:
   - shrinking body and/or
   - increasing wick pressure on trend side
@@ -110,6 +112,8 @@ From `env.example`:
 - `MAX_CLOSE_TO_EXTREME_PCT=0.25`
 - `EXHAUSTION_RUN_MIN=4`
 - `EXHAUSTION_RUN_MAX=5`
+- `EXHAUSTION_REV_MIN_PREV_RANGE_MULT=0.4`
+- `EXHAUSTION_REV_MAX_PREV_RANGE_MULT=0.7`
 - `CHOP_LOOKBACK=4`
 - `LOW_VOL_FACTOR=0.45`
 - `LOW_VOL_COMPARE=20`

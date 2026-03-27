@@ -134,6 +134,18 @@ function exhaustion(
     if (runGreen && !isRed(rev)) continue;
     if (runRed && !isGreen(rev)) continue;
 
+    const prev = run[run.length - 1]!;
+    const prevRange = range(prev);
+    const revRange = range(rev);
+    if (prevRange <= 0) continue;
+    const revVsPrev = revRange / prevRange;
+    if (
+      revVsPrev < config.exhaustionRevMinPrevRangeMult ||
+      revVsPrev > config.exhaustionRevMaxPrevRangeMult
+    ) {
+      continue;
+    }
+
     const baseline = candles.slice(
       -(runLen + 1 + config.bodyLookback),
       -(runLen + 1),

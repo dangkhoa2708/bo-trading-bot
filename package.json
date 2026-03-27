@@ -8,6 +8,7 @@
     "start": "node dist/main.js",
     "dev": "tsx watch src/main.ts",
     "report:today": "tsx src/report/daily.ts",
+    "report:week": "tsx src/report/weekly.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

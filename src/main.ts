@@ -7,6 +7,7 @@ import { evaluate } from "./strategy/engine.js";
 import type { Candle } from "./types.js";
 import { formatVerifyLog, formatVerifyTelegramLog } from "./logging/verify.js";
 import { logRuntime } from "./logging/runtime.js";
+import { startTelegramCommandListener } from "./telegram/notify.js";
 
 function trimBuffer(candles: Candle[], max: number): void {
   while (candles.length > max) candles.shift();
@@ -17,6 +18,7 @@ async function main(): Promise<void> {
   const dispatcher = new SignalDispatcher();
   let pendingPrediction:
     | {
+        signalId: string;
         predicted: "UP" | "DOWN";
         fromOpenTime: number;
         fromSetup: string;
@@ -27,6 +29,7 @@ async function main(): Promise<void> {
   await logRuntime(
     `[main] ${config.symbol} ${config.interval} — buffer ${config.candleBuffer} — dryRun=${config.dryRun}`,
   );
+  await startTelegramCommandListener();
 
   try {
     const hist = await fetchKlines(
@@ -55,9 +58,10 @@ async function main(): Promise<void> {
             : "FLAT";
       const status = actual === expected ? "RIGHT" : "WRONG";
       await logRuntime(
-        `[post-prediction] for=${new Date(pendingPrediction.fromOpenTime).toISOString()} baseline_close=${pendingPrediction.baselineClose} next_close=${c.close} expected=${expected} actual=${actual} result=${status} setup=${pendingPrediction.fromSetup}`,
+        `[post-prediction] id=${pendingPrediction.signalId} for=${new Date(pendingPrediction.fromOpenTime).toISOString()} baseline_close=${pendingPrediction.baselineClose} next_close=${c.close} expected=${expected} actual=${actual} result=${status} setup=${pendingPrediction.fromSetup}`,
       );
       appendPredictionLog({
+        signalId: pendingPrediction.signalId,
         ts: new Date().toISOString(),
         fromOpenTime: pendingPrediction.fromOpenTime,
         baselineClose: pendingPrediction.baselineClose,
@@ -99,20 +103,23 @@ async function main(): Promise<void> {
       return;
     }
 
+    const signalId = `${c.openTime}-${result.signal}-${result.setup}`;
     await logRuntime(
-      `[signal] ${new Date(c.openTime).toISOString()} ${result.signal} ${result.setup} — ${result.reason}`,
+      `[signal] id=${signalId} ${new Date(c.openTime).toISOString()} ${result.signal} ${result.setup} — ${result.reason}`,
     );
     pendingPrediction = {
+      signalId,
       predicted: result.signal,
       fromOpenTime: c.openTime,
       fromSetup: result.setup,
       baselineClose: c.close,
     };
     await logRuntime(
-      `[pre-prediction] from=${new Date(c.openTime).toISOString()} predict_next=${result.signal} setup=${result.setup} reason=${result.reason}`,
+      `[pre-prediction] id=${signalId} from=${new Date(c.openTime).toISOString()} predict_next=${result.signal} setup=${result.setup} reason=${result.reason}`,
     );
 
     appendSignalLog({
+      signalId,
       ts: new Date().toISOString(),
       openTime: c.openTime,
       price: c.close,

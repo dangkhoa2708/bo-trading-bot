@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fmtGmt7, gmt7DateKey } from "../time/utils.js";
+import { fmtGmt7 } from "../time/utils.js";
 
 type SignalRow = {
   signalId?: string;
@@ -38,9 +38,9 @@ type DetailItem = {
   nextClose: number | null;
 };
 
-type DailyReportData = {
+type WeeklyReportData = {
   hasLogs: boolean;
-  date: string;
+  windowLabel: string;
   signalTotal: number;
   up: number;
   down: number;
@@ -60,14 +60,7 @@ function safeParse<T>(line: string): T | null {
   }
 }
 
-function todayKeyGmt7(): string {
-  return gmt7DateKey(Date.now());
-}
-
-function parseTodayRows<T extends { ts: string }>(
-  file: string,
-  today: string,
-): T[] {
+function parseRecentRows<T extends { ts: string }>(file: string, sinceMs: number): T[] {
   if (!fs.existsSync(file)) return [];
   const raw = fs.readFileSync(file, "utf8");
   const lines = raw.split("\n").map((s) => s.trim()).filter(Boolean);
@@ -76,19 +69,21 @@ function parseTodayRows<T extends { ts: string }>(
     .filter((r): r is T => r !== null);
   return rows.filter((r) => {
     const ms = Date.parse(r.ts);
-    if (!Number.isFinite(ms)) return false;
-    return gmt7DateKey(ms) === today;
+    return Number.isFinite(ms) && ms >= sinceMs;
   });
 }
 
-function buildDailyReportData(): DailyReportData {
+function buildWeeklyReportData(): WeeklyReportData {
   const signalFile = path.join(process.cwd(), "logs", "signals.jsonl");
   const predictionFile = path.join(process.cwd(), "logs", "predictions.jsonl");
-  const today = todayKeyGmt7();
+  const now = Date.now();
+  const sinceMs = now - 7 * 24 * 60 * 60 * 1000;
+  const windowLabel = `${fmtGmt7(sinceMs)} -> ${fmtGmt7(now)}`;
+
   if (!fs.existsSync(signalFile) && !fs.existsSync(predictionFile)) {
     return {
       hasLogs: false,
-      date: today,
+      windowLabel,
       signalTotal: 0,
       up: 0,
       down: 0,
@@ -101,35 +96,29 @@ function buildDailyReportData(): DailyReportData {
     };
   }
 
-  const todaySignals = parseTodayRows<SignalRow>(signalFile, today);
-  const todayPredictions = parseTodayRows<PredictionRow>(predictionFile, today);
+  const signals = parseRecentRows<SignalRow>(signalFile, sinceMs);
+  const predictions = parseRecentRows<PredictionRow>(predictionFile, sinceMs);
 
-  const up = todaySignals.filter((r) => r.signal === "UP").length;
-  const down = todaySignals.filter((r) => r.signal === "DOWN").length;
+  const up = signals.filter((r) => r.signal === "UP").length;
+  const down = signals.filter((r) => r.signal === "DOWN").length;
   const bySetup = new Map<string, number>();
-  for (const r of todaySignals) {
-    bySetup.set(r.setup, (bySetup.get(r.setup) ?? 0) + 1);
-  }
-  const predRight = todayPredictions.filter((r) => r.result === "RIGHT").length;
-  const predWrong = todayPredictions.filter((r) => r.result === "WRONG").length;
-  const winRatePct =
-    todayPredictions.length > 0
-      ? (predRight / todayPredictions.length) * 100
-      : 0;
-
-  const setupParts = [...bySetup.entries()]
+  for (const r of signals) bySetup.set(r.setup, (bySetup.get(r.setup) ?? 0) + 1);
+  const predRight = predictions.filter((r) => r.result === "RIGHT").length;
+  const predWrong = predictions.filter((r) => r.result === "WRONG").length;
+  const winRatePct = predictions.length > 0 ? (predRight / predictions.length) * 100 : 0;
+  const setups = [...bySetup.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${k}:${v}`)
     .join(", ");
 
   const predByFromOpen = new Map<number, PredictionRow>();
   const predBySignalId = new Map<string, PredictionRow>();
-  for (const p of todayPredictions) {
+  for (const p of predictions) {
     predByFromOpen.set(p.fromOpenTime, p);
     if (p.signalId) predBySignalId.set(p.signalId, p);
   }
 
-  const details: DetailItem[] = todaySignals.map((s, idx) => {
+  const details: DetailItem[] = signals.map((s, idx) => {
     const sid = s.signalId ?? `${s.openTime}-${s.signal}-${s.setup}`;
     const p = predBySignalId.get(sid) ?? predByFromOpen.get(s.openTime);
     return {
@@ -150,12 +139,12 @@ function buildDailyReportData(): DailyReportData {
 
   return {
     hasLogs: true,
-    date: today,
-    signalTotal: todaySignals.length,
+    windowLabel,
+    signalTotal: signals.length,
     up,
     down,
-    setups: setupParts || "-",
-    predictionTotal: todayPredictions.length,
+    setups: setups || "-",
+    predictionTotal: predictions.length,
     right: predRight,
     wrong: predWrong,
     winRatePct,
@@ -163,9 +152,9 @@ function buildDailyReportData(): DailyReportData {
   };
 }
 
-export function buildDailyReportLines(): string[] {
-  const d = buildDailyReportData();
-  if (!d.hasLogs) return ["[daily-report] no logs found in logs/"];
+export function buildWeeklyReportLines(): string[] {
+  const d = buildWeeklyReportData();
+  if (!d.hasLogs) return ["[weekly-report] no logs found in logs/"];
 
   const detailLines: string[] = [];
   if (d.details.length > 0) {
@@ -192,8 +181,8 @@ export function buildDailyReportLines(): string[] {
   }
 
   return [
-    "================ DAILY REPORT (GMT+7) ================",
-    `Date        : ${d.date}`,
+    "================ WEEKLY REPORT (GMT+7) ===============",
+    `Window      : ${d.windowLabel}`,
     "",
     "Signals",
     `  Total     : ${d.signalTotal}`,
@@ -210,15 +199,15 @@ export function buildDailyReportLines(): string[] {
   ];
 }
 
-export function buildDailyReportText(): string {
-  const d = buildDailyReportData();
+export function buildWeeklyReportText(): string {
+  const d = buildWeeklyReportData();
   if (!d.hasLogs) {
-    return "📊 <b>Daily Report</b> (GMT+7)\nNo logs found yet.";
+    return "📈 <b>Weekly Report</b> (GMT+7)\nNo logs found yet.";
   }
 
   const header = [
-    "📊 <b>Daily Report</b> <i>(GMT+7)</i>",
-    `🗓️ Date: <code>${d.date}</code>`,
+    "📈 <b>Weekly Report</b> <i>(GMT+7)</i>",
+    `🗓️ Window: <code>${d.windowLabel}</code>`,
     "",
     "📡 <b>Signals</b>",
     `• Total: <code>${d.signalTotal}</code>`,
@@ -259,12 +248,12 @@ export function buildDailyReportText(): string {
   return [...header, ...detailText].join("\n");
 }
 
-function runDailyReportCli(): void {
-  for (const line of buildDailyReportLines()) {
+function runWeeklyReportCli(): void {
+  for (const line of buildWeeklyReportLines()) {
     console.log(line);
   }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  runDailyReportCli();
+  runWeeklyReportCli();
 }

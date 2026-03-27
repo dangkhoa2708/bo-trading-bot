@@ -89,8 +89,14 @@ Recommended rollout:
 - `npm run build` - compile TypeScript to `dist/`
 - `npm run start` - run compiled app
 - `npm run report:today` - show today's signal counts from `logs/signals.jsonl` (GMT+7)
+- `npm run report:week` - show last 7 days signal/prediction report (GMT+7)
 - `npm run test` - run unit tests once
 - `npm run test:watch` - run tests in watch mode
+
+Telegram command:
+
+- `/dailyreport` - reply with today's report (signals + predictions) for the configured chat
+- `/weeklyreport` - reply with last 7 days report (signals + predictions) for the configured chat
 
 ## Configuration
 
@@ -102,6 +108,7 @@ Most useful knobs:
 - `MOMENTUM_RANGE_VS_AVG` - strictness of momentum candle range expansion
 - `MIN_BODY_TO_RANGE` - strictness of strong close
 - `MAX_CLOSE_TO_EXTREME_PCT` - requires close near candle high/low in trend direction
+- `EXHAUSTION_REV_MIN_PREV_RANGE_MULT` / `EXHAUSTION_REV_MAX_PREV_RANGE_MULT` - keep exhaustion reversal size in a healthy band vs previous candle
 - `CHOP_LOOKBACK` - sensitivity to alternating/choppy candles
 - `LOW_VOL_FACTOR` - low-volatility filter sensitivity
 - `ATR_PERIOD` - lookback for ATR volatility
@@ -123,6 +130,7 @@ Output file: `logs/signals.jsonl`
 
 Each line includes:
 
+- signal id (link key between signal and prediction)
 - timestamp
 - candle open time
 - close price
