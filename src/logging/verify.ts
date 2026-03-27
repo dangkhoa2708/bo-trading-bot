@@ -75,7 +75,7 @@ export function formatSignalTelegramLog(
   c: Candle,
   result: StrategyResult,
   signalId: string,
-  charts?: Pick<SignalChartLinks, "tradingViewUrl" | "binanceTradeUrl">,
+  charts?: Pick<SignalChartLinks, "tradingViewUrl">,
 ): string {
   const icon = result.signal === "UP" ? "🟢" : result.signal === "DOWN" ? "🔴" : "⚪️";
   const timeText = fmtGmt7(c.openTime);
@@ -83,10 +83,8 @@ export function formatSignalTelegramLog(
     charts !== undefined
       ? [
           "",
-          "📊 <b>Live chart</b> — tap links or buttons below <i>(opens in Telegram browser)</i>",
-          `• <a href="${escapeHtml(charts.tradingViewUrl)}">TradingView</a> <i>(${escapeHtml(pair)} / chart)</i>`,
-          `• <a href="${escapeHtml(charts.binanceTradeUrl)}">Binance</a>`,
-          // Naked URLs help some clients show a link preview card.
+          "📊 <b>Live chart</b> — tap link or button below <i>(opens in Telegram browser)</i>",
+          `• <a href="${escapeHtml(charts.tradingViewUrl)}">TradingView</a> <i>(${escapeHtml(pair)})</i>`,
           charts.tradingViewUrl,
         ]
       : [];
@@ -103,20 +101,19 @@ export function formatSignalTelegramLog(
   ].join("\n");
 }
 
-/** Payload for <code>/chart</code> — same links as signal alerts. */
+/** Payload for <code>/chart</code> — same link as signal alerts. */
 export function buildChartTestTelegramPayload(
   pair: string,
   interval: string,
 ): { text: string; replyMarkup: SignalChartLinks["replyMarkup"] } {
   const links = signalChartLinks(pair, interval);
   const text = [
-    "🧪 <b>Chart links (test)</b>",
+    "🧪 <b>Chart link (test)</b>",
     `<b>Pair</b>: <code>${escapeHtml(pair)}</code>  <b>Interval</b>: <code>${escapeHtml(interval)}</code>`,
     "",
-    "Same TradingView / Binance URLs as signal alerts. Use <code>/chart</code> to verify buttons and previews.",
+    "Same TradingView URL as signal alerts. Use <code>/chart</code> to verify the button and preview.",
     "",
     `📊 <a href="${escapeHtml(links.tradingViewUrl)}">TradingView</a>`,
-    `📈 <a href="${escapeHtml(links.binanceTradeUrl)}">Binance</a>`,
     links.tradingViewUrl,
   ].join("\n");
   return { text, replyMarkup: links.replyMarkup };

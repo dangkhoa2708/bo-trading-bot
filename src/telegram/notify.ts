@@ -13,19 +13,31 @@ import {
 } from "../report/weekly.js";
 import { getStatusSnapshot } from "../runtime/status.js";
 import { buildChartTestTelegramPayload } from "../logging/verify.js";
+import { tradingViewBinanceUrl } from "../chart/externalLinks.js";
 
-/** Inline keyboard: toggle per-signal details (Telegram has no native expand/collapse). */
-function reportDetailsKeyboard(kind: "d" | "w", expanded: boolean) {
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: expanded ? "Hide details" : "Show details",
-          callback_data: `rpt:${kind}:${expanded ? "0" : "1"}`,
-        },
-      ],
-    ],
-  };
+type ReportInlineButton =
+  | { text: string; url: string }
+  | { text: string; callback_data: string };
+
+/** Reports: TradingView 5m + optional Show/Hide details toggle. */
+function reportReplyMarkup(
+  kind: "d" | "w",
+  expanded: boolean,
+  hasDetails: boolean,
+): { inline_keyboard: ReportInlineButton[][] } {
+  const chartUrl = tradingViewBinanceUrl(config.symbol, "5m");
+  const rows: ReportInlineButton[][] = [
+    [{ text: "📊 Open chart (5m)", url: chartUrl }],
+  ];
+  if (hasDetails) {
+    rows.push([
+      {
+        text: expanded ? "Hide details" : "Show details",
+        callback_data: `rpt:${kind}:${expanded ? "0" : "1"}`,
+      },
+    ]);
+  }
+  return { inline_keyboard: rows };
 }
 
 async function fetchOk(url: string, timeoutMs = 4000): Promise<boolean> {
@@ -53,7 +65,11 @@ export async function sendTelegramText(
   text: string,
   options?: {
     parseMode?: "HTML" | "MarkdownV2";
-    replyMarkup?: { inline_keyboard: Array<Array<{ text: string; url: string }>> };
+    replyMarkup?: {
+      inline_keyboard: Array<
+        Array<{ text: string; url: string } | { text: string; callback_data: string }>
+      >;
+    };
   },
 ): Promise<void> {
   if (!config.telegramBotToken || !config.telegramChatId) {
@@ -113,7 +129,7 @@ export async function startTelegramCommandListener(): Promise<void> {
     const hasDetails = buildDailyReportDetailsHtml().length > 0;
     await ctx.reply(summary, {
       parse_mode: "HTML",
-      reply_markup: hasDetails ? reportDetailsKeyboard("d", false) : undefined,
+      reply_markup: reportReplyMarkup("d", false, hasDetails),
     });
   });
   b.command("weeklyreport", async (ctx) => {
@@ -126,7 +142,7 @@ export async function startTelegramCommandListener(): Promise<void> {
     const hasDetails = buildWeeklyReportDetailsHtml().length > 0;
     await ctx.reply(summary, {
       parse_mode: "HTML",
-      reply_markup: hasDetails ? reportDetailsKeyboard("w", false) : undefined,
+      reply_markup: reportReplyMarkup("w", false, hasDetails),
     });
   });
   b.command("chart", async (ctx) => {
@@ -173,10 +189,15 @@ export async function startTelegramCommandListener(): Promise<void> {
           ? buildWeeklyReportText()
           : buildWeeklyReportSummaryHtml();
 
+    const hasDetails =
+      kind === "d"
+        ? buildDailyReportDetailsHtml().length > 0
+        : buildWeeklyReportDetailsHtml().length > 0;
+
     try {
       await ctx.editMessageText(text, {
         parse_mode: "HTML",
-        reply_markup: reportDetailsKeyboard(kind, expanded),
+        reply_markup: reportReplyMarkup(kind, expanded, hasDetails),
       });
       await ctx.answerCbQuery();
     } catch (err) {

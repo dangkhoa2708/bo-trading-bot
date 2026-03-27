@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  binanceSpotTradeUrl,
   intervalToTradingView,
   signalChartLinks,
   tradingViewBinanceUrl,
@@ -19,18 +18,11 @@ describe("chart external links", () => {
     );
   });
 
-  it("builds Binance trade URL", () => {
-    expect(binanceSpotTradeUrl("BNBUSDT")).toBe(
-      "https://www.binance.com/en/trade/BNB_USDT",
-    );
-  });
-
-  it("signalChartLinks returns paired URLs and keyboard", () => {
+  it("signalChartLinks returns TradingView URL and keyboard", () => {
     const l = signalChartLinks("BNBUSDT", "5m");
     expect(l.tradingViewUrl).toContain("tradingview.com");
-    expect(l.binanceTradeUrl).toContain("binance.com");
-    expect(l.replyMarkup.inline_keyboard[0]).toHaveLength(2);
+    expect(l.replyMarkup.inline_keyboard[0]).toHaveLength(1);
     expect(l.replyMarkup.inline_keyboard[0][0].url).toBe(l.tradingViewUrl);
-    expect(l.replyMarkup.inline_keyboard[0][1].url).toBe(l.binanceTradeUrl);
+    expect(l.replyMarkup.inline_keyboard[0][0].text).toContain("TradingView");
   });
 });

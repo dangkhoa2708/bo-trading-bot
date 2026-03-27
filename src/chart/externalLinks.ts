@@ -31,27 +31,8 @@ export function tradingViewBinanceUrl(pair: string, interval: string): string {
   return `https://www.tradingview.com/chart/?symbol=${symbol}&interval=${tv}`;
 }
 
-/** Binance spot trade page (includes chart). */
-export function binanceSpotTradeUrl(pair: string): string {
-  const p = normalizePairSymbol(pair);
-  if (p.endsWith("USDT")) {
-    const base = p.slice(0, -4);
-    return `https://www.binance.com/en/trade/${base}_USDT`;
-  }
-  if (p.endsWith("USDC")) {
-    const base = p.slice(0, -4);
-    return `https://www.binance.com/en/trade/${base}_USDC`;
-  }
-  if (p.endsWith("BUSD")) {
-    const base = p.slice(0, -4);
-    return `https://www.binance.com/en/trade/${base}_BUSD`;
-  }
-  return `https://www.binance.com/en/trade/${p}`;
-}
-
 export type SignalChartLinks = {
   tradingViewUrl: string;
-  binanceTradeUrl: string;
   replyMarkup: {
     inline_keyboard: Array<Array<{ text: string; url: string }>>;
   };
@@ -59,17 +40,10 @@ export type SignalChartLinks = {
 
 export function signalChartLinks(pair: string, interval: string): SignalChartLinks {
   const tradingViewUrl = tradingViewBinanceUrl(pair, interval);
-  const binanceTradeUrl = binanceSpotTradeUrl(pair);
   return {
     tradingViewUrl,
-    binanceTradeUrl,
     replyMarkup: {
-      inline_keyboard: [
-        [
-          { text: "📊 TradingView", url: tradingViewUrl },
-          { text: "📈 Binance", url: binanceTradeUrl },
-        ],
-      ],
+      inline_keyboard: [[{ text: "📊 TradingView", url: tradingViewUrl }]],
     },
   };
 }
