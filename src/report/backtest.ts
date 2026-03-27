@@ -10,11 +10,9 @@ function escapeHtml(s: string): string {
 
 const MAX_DETAIL_ROWS = 25;
 
-/** HTML report for Telegram (same tone as daily/weekly summaries). */
+/** HTML report for Telegram (aligned with daily/weekly summary shape). */
 export function buildBacktestReportHtml(r: BacktestResult): string {
-  const setupParts = Object.entries(r.bySetup)
-    .map(([k, v]) => `${k}:${v}`)
-    .join(", ");
+  const d = r.predictionBySetup;
 
   const detailRows = r.rows.slice(-MAX_DETAIL_ROWS);
   const detailBlock =
@@ -39,22 +37,31 @@ export function buildBacktestReportHtml(r: BacktestResult): string {
     `🗓️ <b>Window</b>: last <code>${BACKTEST_WINDOW_DAYS}</code> days of closed klines`,
     `📎 <code>${escapeHtml(r.windowLabelGmt7)}</code>`,
     "",
-    "<i>Early bars in the window still “warm up” indicators (same as a cold-started bot).</i>",
+    "<i>Early bars in the window still “warm up” indicators. Predictions use the same next-candle rule as live.</i>",
     "",
     "📡 <b>Pair</b>",
     `• <code>${escapeHtml(r.pair)}</code>  <b>TF</b>: <code>${escapeHtml(r.interval)}</code>`,
-    `• Klines loaded: <code>${r.candleCount}</code>`,
+    `• Klines in window: <code>${r.candleCount}</code>  <i>(+ ${r.candleCountFetched - r.candleCount} for resolving last prediction)</i>`,
     "",
-    "🎯 <b>Strategy</b> <i>(raw UP/DOWN from engine in window)</i>",
-    `• <code>${r.rawSignals}</code>`,
-    "",
-    "📣 <b>Would send</b> <i>(same dispatcher as live)</i>",
-    `• Emitted: <code>${r.emitted}</code>`,
+    "📡 <b>Signals</b> <i>(would send — same dispatcher as live)</i>",
+    `• Total: <code>${r.emitted}</code>`,
     `• UP / DOWN: <code>${r.emittedUp} / ${r.emittedDown}</code>`,
-    `• Skipped by dispatcher: <code>${r.skippedByDispatcher}</code>`,
+    `• Setups: <code>${escapeHtml(r.setups)}</code>`,
+    `• Engine UP/DOWN (pre-dispatcher): <code>${r.rawSignals}</code>  • Skipped: <code>${r.skippedByDispatcher}</code>`,
     "",
-    "🧩 <b>Emitted by setup</b>",
-    setupParts ? `• <code>${escapeHtml(setupParts)}</code>` : "• <code>—</code>",
+    "🎯 <b>Predictions</b> <i>(next candle vs baseline close)</i>",
+    `• Total: <code>${r.predictionTotal}</code>`,
+    `• ✅ Right: <code>${r.predictionRight}</code>`,
+    `• ❌ Wrong: <code>${r.predictionWrong}</code>`,
+    `• 🏆 Win rate: <code>${r.predictionWinRatePct.toFixed(1)}%</code>`,
+    "",
+    "🧩 <b>Predictions by setup</b>",
+    `• Momentum: <code>${d.Momentum.total}</code> (✅ <code>${d.Momentum.right}</code> / ❌ <code>${d.Momentum.wrong}</code>) — <code>${d.Momentum.winRatePct.toFixed(1)}%</code>`,
+    `• Exhaustion: <code>${d.Exhaustion.total}</code> (✅ <code>${d.Exhaustion.right}</code> / ❌ <code>${d.Exhaustion.wrong}</code>) — <code>${d.Exhaustion.winRatePct.toFixed(1)}%</code>`,
+    `• Mirror: <code>${d.Mirror.total}</code> (✅ <code>${d.Mirror.right}</code> / ❌ <code>${d.Mirror.wrong}</code>) — <code>${d.Mirror.winRatePct.toFixed(1)}%</code>`,
+    d.Other.total > 0
+      ? `• Other: <code>${d.Other.total}</code> (✅ <code>${d.Other.right}</code> / ❌ <code>${d.Other.wrong}</code>) — <code>${d.Other.winRatePct.toFixed(1)}%</code>`
+      : "• Other: <code>0</code>",
     detailBlock,
   ]
     .filter(Boolean)
