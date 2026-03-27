@@ -47,24 +47,26 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   emaPeriod: 20,
   bodyLookback: 20,
 
-  momentumBodyVsAvg: 1.0,
-  momentumRangeVsAvg: 0.9,
-  minBodyToRange: 0.55,
-  maxCloseToExtremePct: 0.25,
+  // Momentum: looser than “strict” profile so grinding trends (some wicks, smaller bodies vs volatile baseline) can qualify.
+  momentumBodyVsAvg: 0.72,
+  momentumRangeVsAvg: 0.72,
+  minBodyToRange: 0.42,
+  maxCloseToExtremePct: 0.38,
 
   exhaustionRunMin: 4,
-  exhaustionRevMinPrevRangeMult: 0.4,
-  exhaustionRevMaxPrevRangeMult: 0.7,
+  exhaustionRevMinPrevRangeMult: 0.3,
+  exhaustionRevMaxPrevRangeMult: 0.5,
 
-  chopLookback: 4,
-  lowVolFactor: 0.45,
+  chopLookback: 3,
+  lowVolFactor: 0.38,
   lowVolCompare: 20,
 
   atrPeriod: 14,
   minAtrPct: 0.00005,
   maxAtrPct: 0.03,
 
-  sidewaysEmaPct: 0.001,
+  // Narrower “sideways” band: only skip when price is extremely tight to EMA (avoids blocking grind along MA).
+  sidewaysEmaPct: 0.0005,
 
   // Mirror (Setup C) guards: avoid fake bounces in strong downtrend / post-dump.
   mirrorMaxBelowEmaPct: 0.002, // allow Mirror UP if close is within 0.2% below EMA20

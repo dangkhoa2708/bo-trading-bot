@@ -43,6 +43,13 @@ For setup, run instructions, and operational notes, see `README.md`.
   - Bullish momentum valid only if close > EMA20 -> signal `UP`
   - Bearish momentum valid only if close < EMA20 -> signal `DOWN`
 
+**Why you might see no momentum during a “clear” chart uptrend**
+
+- **Wicks / grind**: steady climbs often have upper wicks or modest bodies; strict `MAX_CLOSE_TO_EXTREME_PCT` + `MIN_BODY_TO_RANGE` reject those candles even when the trend looks obvious.
+- **Baseline**: body/range are compared to the prior `BODY_LOOKBACK` window; after volatility, recent candles can look “weak” vs that average.
+- **Skip filters run first**: choppy / low-vol / sideways / ATR can return `NONE` before momentum is evaluated.
+- **EMA**: bullish momentum needs **close > EMA20**; price hugging or below the EMA does not qualify.
+
 ### Setup B: Exhaustion Reversal
 
 - Prior run has at least `EXHAUSTION_RUN_MIN` same-color candles
@@ -108,21 +115,21 @@ From `src/config.ts`:
 - `candleBuffer=50`
 - `emaPeriod=20`
 - `bodyLookback=20`
-- `momentumBodyVsAvg=1`
-- `momentumRangeVsAvg=0.9`
-- `minBodyToRange=0.55`
-- `maxCloseToExtremePct=0.25`
+- `momentumBodyVsAvg=0.72`
+- `momentumRangeVsAvg=0.72`
+- `minBodyToRange=0.42`
+- `maxCloseToExtremePct=0.38`
 - `exhaustionRunMin=4`
-- `exhaustionRevMinPrevRangeMult=0.4`
-- `exhaustionRevMaxPrevRangeMult=0.7`
-- `chopLookback=4`
-- `lowVolFactor=0.45`
+- `exhaustionRevMinPrevRangeMult=0.3`
+- `exhaustionRevMaxPrevRangeMult=0.5`
+- `chopLookback=3`
+- `lowVolFactor=0.38`
 - `lowVolCompare=20`
 - `atrPeriod=14`
 - `minAtrPct=0.00005`
 - `maxAtrPct=0.03`
-- `sidewaysEmaPct=0.001`
-- `dryRun=true`
+- `sidewaysEmaPct=0.0005`
+- `dryRun=false`
 
 ## Change Control
 
