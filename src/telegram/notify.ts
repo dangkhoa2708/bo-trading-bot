@@ -14,7 +14,7 @@ import {
 import { getStatusSnapshot } from "../runtime/status.js";
 import { buildChartTestTelegramPayload } from "../logging/verify.js";
 import { tradingViewBinanceUrl } from "../chart/externalLinks.js";
-import { runBacktest } from "../backtest/runner.js";
+import { BACKTEST_WINDOW_DAYS, runBacktest } from "../backtest/runner.js";
 import { buildBacktestReportHtml } from "../report/backtest.js";
 
 type ReportInlineButton =
@@ -169,7 +169,14 @@ export async function startTelegramCommandListener(): Promise<void> {
     if (cid !== undefined) {
       await ctx.telegram.sendChatAction(cid, "typing");
     }
-    const r = await runBacktest();
+    const text =
+      ctx.message && "text" in ctx.message ? ctx.message.text.trim() : "";
+    const tokens = text.split(/\s+/).filter(Boolean);
+    let days = BACKTEST_WINDOW_DAYS;
+    if (tokens.length >= 2 && /^\d+$/.test(tokens[1]!)) {
+      days = Math.max(1, Math.min(90, parseInt(tokens[1]!, 10)));
+    }
+    const r = await runBacktest({ days });
     if (!r.ok) {
       await ctx.reply(`Backtest failed: ${r.message}`);
       return;

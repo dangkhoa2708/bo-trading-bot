@@ -82,12 +82,12 @@ After a **candidate** is identified, the engine re-checks wider context before e
 | Candidate | Extra checks |
 |-----------|----------------|
 | **Exhaustion** | Near support (for `DOWN`) or near resistance (for `UP`) — if fail, **fall through** to Mirror/Momentum. |
-| **Mirror UP** | Spike filter on the green candle (vs median body and ATR). |
+| **Mirror UP** | Spike filter: signal green body vs **median body of prior bars only** (last bar excluded from median) and vs ATR. |
 | **Momentum UP** | Same-direction run length ≤ `momentumMaxImpulseRun` (micro opposite bodies ≤ `min(ATR×momentumMicroPauseBodyAtrMult, median×momentumMicroPauseBodyVsMedianMult)` do not reset the run); not testing resistance from below (prior swing highs over short/long lookbacks, excluding last candle). |
-| **Momentum DOWN** | Same run-length cap; not testing support from above (prior swing lows). |
+| **Momentum DOWN** | Same run-length cap; **≥ `momentumMaxSameDirBarsInWindow` red closes** in the last `momentumSameDirWindow` bars → skip (extended bearish context, case 4); near prior swing lows (case 2/5). |
 | **Mirror DOWN** (fallback) | Same as Momentum DOWN. |
 
-**Levels:** “Near support” means `close ≥` prior swing low and `close − low ≤ levelNearAtrMult × ATR`. “Near resistance” means `close ≤` prior swing high and `high − close ≤ levelNearAtrMult × ATR` (testing the zone from the correct side; clean breakouts above/below are not treated as “at the level”).
+**Levels (conservative):** Buffer = `max(levelNearAtrMult × ATR, close × levelNearPricePct)` so small ATR does not miss a level. **Near support** if `abs(close − s)` or `abs(low − s)` ≤ buffer for either short/long swing low (last candle excluded from swing). **Near resistance** symmetric with swing highs and `high`. Prefer skipping when price sits in these zones.
 
 ## Setup Evaluation Priority
 
@@ -156,9 +156,12 @@ From `src/config.ts`:
 - `momentumMaxImpulseRun=5`
 - `levelLookbackShort=10`
 - `levelLookbackLong=50`
-- `levelNearAtrMult=0.22`
-- `mirrorMaxGreenBodyAtrMult=4.5`
-- `mirrorMaxGreenBodyVsMedianMult=7`
+- `levelNearAtrMult=0.55`
+- `levelNearPricePct=0.0012`
+- `momentumSameDirWindow=14`
+- `momentumMaxSameDirBarsInWindow=7`
+- `mirrorMaxGreenBodyAtrMult=3.2`
+- `mirrorMaxGreenBodyVsMedianMult=5.5`
 - `mirrorMedianBodyLookback=20`
 - `dryRun=false`
 

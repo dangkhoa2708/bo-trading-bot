@@ -1,4 +1,4 @@
-import { BACKTEST_WINDOW_DAYS, type BacktestResult } from "../backtest/runner.js";
+import type { BacktestResult } from "../backtest/runner.js";
 
 function escapeHtml(s: string): string {
   return s
@@ -47,7 +47,7 @@ export function buildBacktestReportHtml(r: BacktestResult): string {
 
   const text = [
     "📉 <b>Backtest</b> <i>(GMT+7)</i>",
-    `🗓️ <b>Window</b>: last <code>${BACKTEST_WINDOW_DAYS}</code> days of closed klines`,
+    `🗓️ <b>Window</b>: last <code>${r.days}</code> day(s) of closed klines (ending now)`,
     `📎 <code>${escapeHtml(r.windowLabelGmt7)}</code>`,
     "",
     "<i>Early bars in the window still “warm up” indicators. Predictions use the same next-candle rule as live.</i>",

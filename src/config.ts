@@ -43,6 +43,12 @@ export type BotConfig = {
   levelLookbackLong: number;
   /** Near support/resistance if distance to level ≤ this × ATR. */
   levelNearAtrMult: number;
+  /** Also use max(ATR, close × this) for level distance (case 2/5). */
+  levelNearPricePct: number;
+
+  /** In last N bars, if same-direction bars ≥ max, skip Momentum (case 4). */
+  momentumSameDirWindow: number;
+  momentumMaxSameDirBarsInWindow: number;
 
   /** Mirror: veto if green body exceeds ATR × this (spike). */
   mirrorMaxGreenBodyAtrMult: number;
@@ -99,10 +105,15 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
 
   levelLookbackShort: 10,
   levelLookbackLong: 50,
-  levelNearAtrMult: 0.22,
+  // Conservative: skip when unsure — prefer wider bands (more vetoes near structure).
+  levelNearAtrMult: 0.55,
+  levelNearPricePct: 0.0012,
 
-  mirrorMaxGreenBodyAtrMult: 4.5,
-  mirrorMaxGreenBodyVsMedianMult: 7,
+  momentumSameDirWindow: 14,
+  momentumMaxSameDirBarsInWindow: 7,
+
+  mirrorMaxGreenBodyAtrMult: 3.2,
+  mirrorMaxGreenBodyVsMedianMult: 5.5,
   mirrorMedianBodyLookback: 20,
 
   dryRun: false,

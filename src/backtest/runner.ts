@@ -7,11 +7,19 @@ import { fmtGmt7 } from "../time/utils.js";
 
 const MS_DAY = 24 * 60 * 60 * 1000;
 
-/** Fetch and evaluate the last N days of closed klines only (no extra history). */
+/** Default length of each backtest window (days). */
 export const BACKTEST_WINDOW_DAYS = 3;
+
+/** Extra candles before `windowStart` so EMA/strategy can warm up (5m: 1d ≫ buffer). */
+const WARMUP_BEFORE_WINDOW_MS = 1 * MS_DAY;
 
 /** Extra fetch after window end so the last signal’s “next candle” prediction can resolve. */
 const RESOLVE_TAIL_MS = 2 * MS_DAY;
+
+export type BacktestOptions = {
+  /** Replay length ending at now (default `BACKTEST_WINDOW_DAYS`). */
+  days?: number;
+};
 
 export type PredStats = {
   total: number;
@@ -41,6 +49,8 @@ export type BacktestResult = {
   interval: string;
   windowStartMs: number;
   windowEndMs: number;
+  /** Length of the backtest window (days). */
+  days: number;
   windowLabelGmt7: string;
   candleCount: number;
   /** Klines including tail after window (for prediction resolution). */
@@ -80,17 +90,33 @@ function bucketSetup(
   return "Other";
 }
 
-export async function runBacktest(): Promise<BacktestResult | BacktestError> {
-  const endMs = Date.now();
-  const windowStartMs = endMs - BACKTEST_WINDOW_DAYS * MS_DAY;
-  const fetchEndMs = endMs + RESOLVE_TAIL_MS;
+export async function runBacktest(
+  options: BacktestOptions = {},
+): Promise<BacktestResult | BacktestError> {
+  const days = Math.max(
+    1,
+    Math.min(90, Math.floor(options.days ?? BACKTEST_WINDOW_DAYS)),
+  );
+
+  const now = Date.now();
+  const windowEndMs = now;
+  const windowStartMs = windowEndMs - days * MS_DAY;
+  const fetchStartMs = windowStartMs - WARMUP_BEFORE_WINDOW_MS;
+  const fetchEndMs = windowEndMs + RESOLVE_TAIL_MS;
+
+  if (windowStartMs < now - 400 * MS_DAY) {
+    return {
+      ok: false,
+      message: "Backtest window too far in the past; reduce days.",
+    };
+  }
 
   let all: Candle[];
   try {
     all = await fetchKlinesRange(
       config.symbol,
       config.interval,
-      windowStartMs,
+      fetchStartMs,
       fetchEndMs,
     );
   } catch (e) {
@@ -147,7 +173,7 @@ export async function runBacktest(): Promise<BacktestResult | BacktestError> {
 
       if (
         pendingPrediction.fromOpenTime >= windowStartMs &&
-        pendingPrediction.fromOpenTime <= endMs
+        pendingPrediction.fromOpenTime <= windowEndMs
       ) {
         const b = bucketSetup(pendingPrediction.fromSetup);
         predictionBySetup[b].total++;
@@ -165,7 +191,10 @@ export async function runBacktest(): Promise<BacktestResult | BacktestError> {
     }
     trimBuffer(candles, config.candleBuffer);
 
-    if (c.openTime > endMs) {
+    if (c.openTime < windowStartMs) {
+      continue;
+    }
+    if (c.openTime > windowEndMs) {
       continue;
     }
 
@@ -239,9 +268,12 @@ export async function runBacktest(): Promise<BacktestResult | BacktestError> {
     pair: config.symbol,
     interval: config.interval,
     windowStartMs,
-    windowEndMs: endMs,
-    windowLabelGmt7: `${fmtGmt7(windowStartMs)} → ${fmtGmt7(endMs)}`,
-    candleCount: all.filter((k) => k.openTime <= endMs).length,
+    windowEndMs,
+    days,
+    windowLabelGmt7: `${fmtGmt7(windowStartMs)} → ${fmtGmt7(windowEndMs)}`,
+    candleCount: all.filter(
+      (k) => k.openTime <= windowEndMs && k.openTime >= windowStartMs,
+    ).length,
     candleCountFetched: all.length,
     rawSignals,
     emitted,

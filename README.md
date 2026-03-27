@@ -97,6 +97,8 @@ Telegram command:
 
 - `/dailyreport` - reply with today's report (signals + predictions) for the configured chat
 - `/weeklyreport` - reply with last 7 days report (signals + predictions) for the configured chat
+- `/backtest` — replay the last **3** days of closed klines (ending now) through the same engine + dispatcher as live.
+- `/backtest 7` — last **7** days (max **90**). Binance returns max 1000 candles per request; the client paginates for longer ranges.
 
 ## Configuration
 

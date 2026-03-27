@@ -87,36 +87,47 @@ function priorSwingHigh(candles: Candle[], lookback: number): number | null {
   return Math.max(...slice.map((c) => c.high));
 }
 
+function levelBuffer(lastClose: number, atr: number | null): number {
+  const pct = lastClose * config.levelNearPricePct;
+  if (atr === null || atr <= 0) return pct;
+  return Math.max(atr * config.levelNearAtrMult, pct);
+}
+
 /**
- * Near support: price is sitting on / testing support from above (not already broken down).
- * Avoid `close - low <= buf` when close is far below (that is a breakdown, not a bounce setup).
+ * Near support: close or low within buffer of prior swing lows (both sides of level — skip if unsure).
  */
 function nearSupport(candles: Candle[], atr: number | null): boolean {
-  if (atr === null || atr <= 0) return false;
   const last = candles[candles.length - 1]!;
-  const buf = atr * config.levelNearAtrMult;
+  const buf = levelBuffer(last.close, atr);
+  if (buf <= 0) return false;
   const s1 = priorSwingLow(candles, config.levelLookbackShort);
   const s2 = priorSwingLow(candles, config.levelLookbackLong);
-  const test = (s: number | null) =>
-    s !== null &&
-    last.close >= s &&
-    last.close - s <= buf;
+  const test = (s: number | null) => {
+    if (s === null) return false;
+    return (
+      Math.abs(last.close - s) <= buf ||
+      Math.abs(last.low - s) <= buf
+    );
+  };
   return test(s1) || test(s2);
 }
 
 /**
- * Near resistance: testing the zone from below (not already a clean breakout above).
+ * Near resistance: close or high within buffer of prior swing highs.
  */
 function nearResistance(candles: Candle[], atr: number | null): boolean {
-  if (atr === null || atr <= 0) return false;
   const last = candles[candles.length - 1]!;
-  const buf = atr * config.levelNearAtrMult;
+  const buf = levelBuffer(last.close, atr);
+  if (buf <= 0) return false;
   const r1 = priorSwingHigh(candles, config.levelLookbackShort);
   const r2 = priorSwingHigh(candles, config.levelLookbackLong);
-  const test = (r: number | null) =>
-    r !== null &&
-    last.close <= r &&
-    r - last.close <= buf;
+  const test = (r: number | null) => {
+    if (r === null) return false;
+    return (
+      Math.abs(last.close - r) <= buf ||
+      Math.abs(last.high - r) <= buf
+    );
+  };
   return test(r1) || test(r2);
 }
 
@@ -176,7 +187,10 @@ function mirrorGreenNotSpike(candles: Candle[]): boolean {
     config.mirrorMedianBodyLookback,
     candles.length,
   );
-  const med = median(candles.slice(-lb).map(body));
+  const hist = candles.slice(-lb);
+  const bodiesForMed =
+    hist.length >= 2 ? hist.slice(0, -1).map(body) : hist.map(body);
+  const med = median(bodiesForMed);
   if (med <= 0) return true;
   if (b > med * config.mirrorMaxGreenBodyVsMedianMult) return false;
   if (atr !== null && atr > 0 && b > atr * config.mirrorMaxGreenBodyAtrMult) {
@@ -195,6 +209,18 @@ function exhaustionPassesReconfirm(
   return true;
 }
 
+/** Raw same-direction bar count in recent window (case 4: extended leg with pauses). */
+function sameDirBarsInWindow(candles: Candle[], dir: "UP" | "DOWN"): number {
+  const w = Math.min(config.momentumSameDirWindow, candles.length);
+  const slice = candles.slice(-w);
+  let n = 0;
+  for (const c of slice) {
+    if (dir === "DOWN" && isRed(c)) n++;
+    if (dir === "UP" && isGreen(c)) n++;
+  }
+  return n;
+}
+
 function momentumPassesReconfirm(
   candles: Candle[],
   dir: "UP" | "DOWN",
@@ -202,6 +228,14 @@ function momentumPassesReconfirm(
   const atr = atrLast(candles, config.atrPeriod);
   const runLen = sameDirectionRunLength(candles, dir);
   if (runLen > config.momentumMaxImpulseRun) return false;
+  // Case 4: extended bearish leg (many reds in window); UP uses run-length only (avoid blocking grinds).
+  if (
+    dir === "DOWN" &&
+    sameDirBarsInWindow(candles, "DOWN") >=
+      config.momentumMaxSameDirBarsInWindow
+  ) {
+    return false;
+  }
   if (dir === "DOWN" && nearSupport(candles, atr)) return false;
   if (dir === "UP" && nearResistance(candles, atr)) return false;
   return true;
