@@ -258,13 +258,27 @@ export function buildWeeklyReportLines(): string[] {
   ];
 }
 
-export function buildWeeklyReportText(): string {
+const TELEGRAM_DETAILS_MAX_CHARS = 3600;
+
+/** Telegram HTML: summary only (no per-signal block). */
+export function buildWeeklyReportSummaryHtml(): string {
   const d = buildWeeklyReportData();
   if (!d.hasLogs) {
     return "📈 <b>Weekly Report</b> (GMT+7)\nNo logs found yet.";
   }
 
-  const header = [
+  const header = buildWeeklyReportHeaderLinesHtml(d);
+  if (d.details.length > 0) {
+    header.push(
+      "",
+      `• <i>${d.details.length} per-signal row(s) — tap <b>Show details</b> below.</i>`,
+    );
+  }
+  return header.filter(Boolean).join("\n");
+}
+
+function buildWeeklyReportHeaderLinesHtml(d: WeeklyReportData): string[] {
+  return [
     "📈 <b>Weekly Report</b> <i>(GMT+7)</i>",
     `🗓️ Window: <code>${d.windowLabel}</code>`,
     "",
@@ -287,32 +301,54 @@ export function buildWeeklyReportText(): string {
       ? `• Other: <code>${d.predictionBySetup.Other.total}</code> (✅ <code>${d.predictionBySetup.Other.right}</code> / ❌ <code>${d.predictionBySetup.Other.wrong}</code>) — <code>${d.predictionBySetup.Other.winRatePct.toFixed(1)}%</code>`
       : "",
   ];
+}
 
-  const detailText: string[] = [];
-  if (d.details.length > 0) {
-    detailText.push("", "🧾 <b>Details</b>");
-    for (const item of d.details) {
-      detailText.push(
-        `<b>Signal ${item.index}</b>`,
-        `• SignalId: <code>${item.signalId}</code>`,
-        `• Time: <code>${item.time}</code>`,
-        `• OpenTime: <code>${item.openTime}</code>`,
-        `• Close: <code>${item.close.toFixed(2)}</code>`,
-        `• Signal: <code>${item.signal} (${item.setup})</code>`,
-        `• Prediction: <code>${item.prediction}</code>`,
-        `• Result: <b>${item.result}</b>`,
-        `• Baseline/Next: <code>${
-          item.baselineClose !== null && item.nextClose !== null
-            ? `${item.baselineClose.toFixed(2)} -> ${item.nextClose.toFixed(2)}`
-            : "PENDING"
-        }</code>`,
-        `• Reason: <i>${item.reason}</i>`,
-        "",
-      );
-    }
+function buildWeeklyReportDetailsHtmlForData(d: WeeklyReportData): string {
+  if (!d.hasLogs || d.details.length === 0) return "";
+
+  const detailText: string[] = ["", "🧾 <b>Details</b>"];
+  for (const item of d.details) {
+    detailText.push(
+      `<b>Signal ${item.index}</b>`,
+      `• SignalId: <code>${item.signalId}</code>`,
+      `• Time: <code>${item.time}</code>`,
+      `• OpenTime: <code>${item.openTime}</code>`,
+      `• Close: <code>${item.close.toFixed(2)}</code>`,
+      `• Signal: <code>${item.signal} (${item.setup})</code>`,
+      `• Prediction: <code>${item.prediction}</code>`,
+      `• Result: <b>${item.result}</b>`,
+      `• Baseline/Next: <code>${
+        item.baselineClose !== null && item.nextClose !== null
+          ? `${item.baselineClose.toFixed(2)} -> ${item.nextClose.toFixed(2)}`
+          : "PENDING"
+      }</code>`,
+      `• Reason: <i>${item.reason}</i>`,
+      "",
+    );
+  }
+  let out = detailText.join("\n");
+  if (out.length > TELEGRAM_DETAILS_MAX_CHARS) {
+    out =
+      out.slice(0, TELEGRAM_DETAILS_MAX_CHARS) +
+      "\n\n<i>… (details truncated for Telegram length limit)</i>";
+  }
+  return out;
+}
+
+/** Telegram HTML: per-signal details only (may be empty). */
+export function buildWeeklyReportDetailsHtml(): string {
+  return buildWeeklyReportDetailsHtmlForData(buildWeeklyReportData());
+}
+
+export function buildWeeklyReportText(): string {
+  const d = buildWeeklyReportData();
+  if (!d.hasLogs) {
+    return "📈 <b>Weekly Report</b> (GMT+7)\nNo logs found yet.";
   }
 
-  return [...header, ...detailText].join("\n");
+  const header = buildWeeklyReportHeaderLinesHtml(d);
+  const details = buildWeeklyReportDetailsHtmlForData(d);
+  return [...header, details].filter(Boolean).join("\n");
 }
 
 function runWeeklyReportCli(): void {

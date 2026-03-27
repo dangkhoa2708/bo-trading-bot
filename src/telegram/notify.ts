@@ -1,9 +1,31 @@
 import { Telegraf } from "telegraf";
 import { config } from "../config.js";
 import type { StrategyResult } from "../types.js";
-import { buildDailyReportText } from "../report/daily.js";
-import { buildWeeklyReportText } from "../report/weekly.js";
+import {
+  buildDailyReportDetailsHtml,
+  buildDailyReportSummaryHtml,
+  buildDailyReportText,
+} from "../report/daily.js";
+import {
+  buildWeeklyReportDetailsHtml,
+  buildWeeklyReportSummaryHtml,
+  buildWeeklyReportText,
+} from "../report/weekly.js";
 import { getStatusSnapshot } from "../runtime/status.js";
+
+/** Inline keyboard: toggle per-signal details (Telegram has no native expand/collapse). */
+function reportDetailsKeyboard(kind: "d" | "w", expanded: boolean) {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: expanded ? "Hide details" : "Show details",
+          callback_data: `rpt:${kind}:${expanded ? "0" : "1"}`,
+        },
+      ],
+    ],
+  };
+}
 
 async function fetchOk(url: string, timeoutMs = 4000): Promise<boolean> {
   const ac = new AbortController();
@@ -79,8 +101,12 @@ export async function startTelegramCommandListener(): Promise<void> {
       await ctx.reply("Unauthorized chat for this bot instance.");
       return;
     }
-    const text = buildDailyReportText();
-    await ctx.reply(text, { parse_mode: "HTML" });
+    const summary = buildDailyReportSummaryHtml();
+    const hasDetails = buildDailyReportDetailsHtml().length > 0;
+    await ctx.reply(summary, {
+      parse_mode: "HTML",
+      reply_markup: hasDetails ? reportDetailsKeyboard("d", false) : undefined,
+    });
   });
   b.command("weeklyreport", async (ctx) => {
     const chatId = String(ctx.chat?.id ?? "");
@@ -88,8 +114,55 @@ export async function startTelegramCommandListener(): Promise<void> {
       await ctx.reply("Unauthorized chat for this bot instance.");
       return;
     }
-    const text = buildWeeklyReportText();
-    await ctx.reply(text, { parse_mode: "HTML" });
+    const summary = buildWeeklyReportSummaryHtml();
+    const hasDetails = buildWeeklyReportDetailsHtml().length > 0;
+    await ctx.reply(summary, {
+      parse_mode: "HTML",
+      reply_markup: hasDetails ? reportDetailsKeyboard("w", false) : undefined,
+    });
+  });
+  b.on("callback_query", async (ctx) => {
+    const cq = ctx.callbackQuery;
+    const data = "data" in cq ? cq.data : undefined;
+    if (!data?.startsWith("rpt:")) return;
+    const parts = data.split(":");
+    if (parts.length !== 3) return;
+    const [, kind, flag] = parts;
+    if (kind !== "d" && kind !== "w") return;
+    if (flag !== "0" && flag !== "1") return;
+
+    const chatId = String(ctx.chat?.id ?? "");
+    if (chatId !== config.telegramChatId) {
+      await ctx.answerCbQuery("Unauthorized");
+      return;
+    }
+
+    const msg = ctx.callbackQuery.message;
+    if (!msg || !("message_id" in msg)) {
+      await ctx.answerCbQuery("Message expired");
+      return;
+    }
+
+    const expanded = flag === "1";
+    const text =
+      kind === "d"
+        ? expanded
+          ? buildDailyReportText()
+          : buildDailyReportSummaryHtml()
+        : expanded
+          ? buildWeeklyReportText()
+          : buildWeeklyReportSummaryHtml();
+
+    try {
+      await ctx.editMessageText(text, {
+        parse_mode: "HTML",
+        reply_markup: reportDetailsKeyboard(kind, expanded),
+      });
+      await ctx.answerCbQuery();
+    } catch (err) {
+      console.warn("[telegram] report toggle edit failed:", err);
+      await ctx.answerCbQuery("Could not update message");
+    }
   });
   await b.launch();
   commandListenerStarted = true;
