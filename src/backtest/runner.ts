@@ -63,11 +63,24 @@ export type BacktestResult = {
   emittedDown: number;
   skippedByDispatcher: number;
   setups: string;
+  /** Next-candle scores for signals that passed the dispatcher (sent path). */
   predictionTotal: number;
   predictionRight: number;
   predictionWrong: number;
   predictionWinRatePct: number;
   predictionBySetup: Record<"Momentum" | "Exhaustion" | "Mirror" | "Other", PredStats>;
+  /**
+   * Next-candle scores for every `evaluate()` UP/DOWN in the window, including
+   * bars skipped by the dispatcher (same direction back-to-back, duplicate bar).
+   */
+  allEnginePredictionTotal: number;
+  allEnginePredictionRight: number;
+  allEnginePredictionWrong: number;
+  allEnginePredictionWinRatePct: number;
+  allEnginePredictionBySetup: Record<
+    "Momentum" | "Exhaustion" | "Mirror" | "Other",
+    PredStats
+  >;
   rows: BacktestEmittedRow[];
 };
 
@@ -135,6 +148,8 @@ export async function runBacktest(
     fromOpenTime: number;
     fromSetup: string;
     baselineClose: number;
+    /** False when engine fired but dispatcher skipped (same as live). */
+    emitted: boolean;
   } | null = null;
 
   let rawSignals = 0;
@@ -152,6 +167,14 @@ export async function runBacktest(
     Other: emptyPred(),
   };
 
+  const allEnginePredictionBySetup: BacktestResult["allEnginePredictionBySetup"] =
+    {
+      Momentum: emptyPred(),
+      Exhaustion: emptyPred(),
+      Mirror: emptyPred(),
+      Other: emptyPred(),
+    };
+
   for (const c of all) {
     if (pendingPrediction) {
       const expected = pendingPrediction.predicted;
@@ -163,12 +186,14 @@ export async function runBacktest(
             : "FLAT";
       const status = actual === expected ? "RIGHT" : "WRONG";
 
-      const row = rows.find(
-        (r) => r.fromOpenTime === pendingPrediction!.fromOpenTime,
-      );
-      if (row) {
-        row.predictionResult = status;
-        row.nextClose = c.close;
+      if (pendingPrediction.emitted) {
+        const row = rows.find(
+          (r) => r.fromOpenTime === pendingPrediction!.fromOpenTime,
+        );
+        if (row) {
+          row.predictionResult = status;
+          row.nextClose = c.close;
+        }
       }
 
       if (
@@ -176,9 +201,14 @@ export async function runBacktest(
         pendingPrediction.fromOpenTime <= windowEndMs
       ) {
         const b = bucketSetup(pendingPrediction.fromSetup);
-        predictionBySetup[b].total++;
-        if (status === "RIGHT") predictionBySetup[b].right++;
-        else predictionBySetup[b].wrong++;
+        allEnginePredictionBySetup[b].total++;
+        if (status === "RIGHT") allEnginePredictionBySetup[b].right++;
+        else allEnginePredictionBySetup[b].wrong++;
+        if (pendingPrediction.emitted) {
+          predictionBySetup[b].total++;
+          if (status === "RIGHT") predictionBySetup[b].right++;
+          else predictionBySetup[b].wrong++;
+        }
       }
       pendingPrediction = null;
     }
@@ -209,8 +239,18 @@ export async function runBacktest(
       continue;
     }
 
+    const signalId = `${c.openTime}-${result.signal}-${result.setup}`;
+    const pendingBase = {
+      signalId,
+      predicted: result.signal,
+      fromOpenTime: c.openTime,
+      fromSetup: result.setup,
+      baselineClose: c.close,
+    };
+
     if (!decision.emit) {
       skippedByDispatcher++;
+      pendingPrediction = { ...pendingBase, emitted: false };
       continue;
     }
 
@@ -219,7 +259,6 @@ export async function runBacktest(
     if (result.signal === "DOWN") emittedDown++;
     bySetup.set(result.setup, (bySetup.get(result.setup) ?? 0) + 1);
 
-    const signalId = `${c.openTime}-${result.signal}-${result.setup}`;
     rows.push({
       fromOpenTime: c.openTime,
       time: fmtGmt7(c.openTime),
@@ -229,19 +268,20 @@ export async function runBacktest(
       baselineClose: c.close,
     });
 
-    pendingPrediction = {
-      signalId,
-      predicted: result.signal,
-      fromOpenTime: c.openTime,
-      fromSetup: result.setup,
-      baselineClose: c.close,
-    };
+    pendingPrediction = { ...pendingBase, emitted: true };
   }
 
   for (const key of Object.keys(predictionBySetup) as Array<
     keyof typeof predictionBySetup
   >) {
     const b = predictionBySetup[key];
+    b.winRatePct = b.total > 0 ? (b.right / b.total) * 100 : 0;
+  }
+
+  for (const key of Object.keys(allEnginePredictionBySetup) as Array<
+    keyof typeof allEnginePredictionBySetup
+  >) {
+    const b = allEnginePredictionBySetup[key];
     b.winRatePct = b.total > 0 ? (b.right / b.total) * 100 : 0;
   }
 
@@ -256,6 +296,21 @@ export async function runBacktest(
   const predictionTotal = predictionRight + predictionWrong;
   const predictionWinRatePct =
     predictionTotal > 0 ? (predictionRight / predictionTotal) * 100 : 0;
+
+  const allEnginePredictionRight = Object.values(allEnginePredictionBySetup).reduce(
+    (s, x) => s + x.right,
+    0,
+  );
+  const allEnginePredictionWrong = Object.values(allEnginePredictionBySetup).reduce(
+    (s, x) => s + x.wrong,
+    0,
+  );
+  const allEnginePredictionTotal =
+    allEnginePredictionRight + allEnginePredictionWrong;
+  const allEnginePredictionWinRatePct =
+    allEnginePredictionTotal > 0
+      ? (allEnginePredictionRight / allEnginePredictionTotal) * 100
+      : 0;
 
   const setups =
     [...bySetup.entries()]
@@ -286,6 +341,11 @@ export async function runBacktest(
     predictionWrong,
     predictionWinRatePct,
     predictionBySetup,
+    allEnginePredictionTotal,
+    allEnginePredictionRight,
+    allEnginePredictionWrong,
+    allEnginePredictionWinRatePct,
+    allEnginePredictionBySetup,
     rows,
   };
 }

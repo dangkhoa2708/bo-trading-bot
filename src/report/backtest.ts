@@ -33,6 +33,7 @@ function formatEmittedRowLine(row: BacktestEmittedRow): string {
 /** HTML report for Telegram (aligned with daily/weekly summary shape). */
 export function buildBacktestReportHtml(r: BacktestResult): string {
   const d = r.predictionBySetup;
+  const a = r.allEnginePredictionBySetup;
 
   const header = [
     "📉 <b>Backtest</b> <i>(GMT+7)</i>",
@@ -51,18 +52,32 @@ export function buildBacktestReportHtml(r: BacktestResult): string {
     `• Setups: <code>${escapeHtml(r.setups)}</code>`,
     `• Engine UP/DOWN (pre-dispatcher): <code>${r.rawSignals}</code>  • Skipped: <code>${r.skippedByDispatcher}</code>`,
     "",
-    "🎯 <b>Predictions</b> <i>(next candle vs baseline close)</i>",
+    "🎯 <b>Predictions (emitted only)</b> <i>next candle vs baseline — same as live Telegram</i>",
     `• Total: <code>${r.predictionTotal}</code>`,
     `• ✅ Right: <code>${r.predictionRight}</code>`,
     `• ❌ Wrong: <code>${r.predictionWrong}</code>`,
     `• 🏆 Win rate: <code>${r.predictionWinRatePct.toFixed(1)}%</code>`,
     "",
-    "🧩 <b>Predictions by setup</b>",
+    "🧩 <b>By setup (emitted)</b>",
     `• Momentum: <code>${d.Momentum.total}</code> (✅ <code>${d.Momentum.right}</code> / ❌ <code>${d.Momentum.wrong}</code>) — <code>${d.Momentum.winRatePct.toFixed(1)}%</code>`,
     `• Exhaustion: <code>${d.Exhaustion.total}</code> (✅ <code>${d.Exhaustion.right}</code> / ❌ <code>${d.Exhaustion.wrong}</code>) — <code>${d.Exhaustion.winRatePct.toFixed(1)}%</code>`,
     `• Mirror: <code>${d.Mirror.total}</code> (✅ <code>${d.Mirror.right}</code> / ❌ <code>${d.Mirror.wrong}</code>) — <code>${d.Mirror.winRatePct.toFixed(1)}%</code>`,
     d.Other.total > 0
       ? `• Other: <code>${d.Other.total}</code> (✅ <code>${d.Other.right}</code> / ❌ <code>${d.Other.wrong}</code>) — <code>${d.Other.winRatePct.toFixed(1)}%</code>`
+      : "• Other: <code>0</code>",
+    "",
+    "🔓 <b>All engine UP/DOWN</b> <i>includes dispatcher-skipped (same dir / dup bar) — hypothetically traded every raw signal</i>",
+    `• Total: <code>${r.allEnginePredictionTotal}</code>`,
+    `• ✅ Right: <code>${r.allEnginePredictionRight}</code>`,
+    `• ❌ Wrong: <code>${r.allEnginePredictionWrong}</code>`,
+    `• 🏆 Win rate: <code>${r.allEnginePredictionWinRatePct.toFixed(1)}%</code>`,
+    "",
+    "🧩 <b>By setup (all engine)</b>",
+    `• Momentum: <code>${a.Momentum.total}</code> (✅ <code>${a.Momentum.right}</code> / ❌ <code>${a.Momentum.wrong}</code>) — <code>${a.Momentum.winRatePct.toFixed(1)}%</code>`,
+    `• Exhaustion: <code>${a.Exhaustion.total}</code> (✅ <code>${a.Exhaustion.right}</code> / ❌ <code>${a.Exhaustion.wrong}</code>) — <code>${a.Exhaustion.winRatePct.toFixed(1)}%</code>`,
+    `• Mirror: <code>${a.Mirror.total}</code> (✅ <code>${a.Mirror.right}</code> / ❌ <code>${a.Mirror.wrong}</code>) — <code>${a.Mirror.winRatePct.toFixed(1)}%</code>`,
+    a.Other.total > 0
+      ? `• Other: <code>${a.Other.total}</code> (✅ <code>${a.Other.right}</code> / ❌ <code>${a.Other.wrong}</code>) — <code>${a.Other.winRatePct.toFixed(1)}%</code>`
       : "• Other: <code>0</code>",
   ].join("\n");
 
