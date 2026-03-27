@@ -149,6 +149,44 @@ Each line includes:
   - this can be valid; skip conditions may filter noisy market
   - inspect console reasons and `RULES.md`
 
+## Pull VPS Logs
+
+Helper scripts (from project root):
+
+```bash
+VPS_IP=<VPS_IP> scripts/pull-vps-logs.sh
+VPS_IP=<VPS_IP> scripts/tail-vps-logs.sh
+```
+
+Optional vars:
+
+- `VPS_USER` (default `bot`)
+- `REMOTE_DIR` for pull script (default `~/bo-trading-bot/logs`)
+- `REMOTE_FILE` for tail script (default `~/bo-trading-bot/logs/signals.jsonl`)
+- `LOCAL_DIR` for pull script (default `./logs-vps`)
+
+Manual commands:
+
+From your local machine, pull runtime logs from VPS:
+
+```bash
+mkdir -p ./logs-vps
+scp bot@<VPS_IP>:~/bo-trading-bot/logs/*.jsonl ./logs-vps/
+```
+
+Or use `rsync` (safer for repeated syncs):
+
+```bash
+mkdir -p ./logs-vps
+rsync -avz bot@<VPS_IP>:~/bo-trading-bot/logs/ ./logs-vps/
+```
+
+Quick live view directly on VPS:
+
+```bash
+ssh bot@<VPS_IP> 'tail -f ~/bo-trading-bot/logs/signals.jsonl'
+```
+
 ## Safety Note
 
 This project emits signals only. It does not place live orders.
