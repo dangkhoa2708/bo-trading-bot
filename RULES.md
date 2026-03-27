@@ -17,6 +17,15 @@ For setup, run instructions, and operational notes, see `README.md`.
 - Bootstrap startup history using REST klines before live stream
 - Evaluate on each closed candle
 
+## Alert dispatch (Telegram / logs)
+
+Backtest showed **Mirror** does better when **same-direction dedupe** applies (only emit when the bar would be “emitted” after skipping back-to-back same-direction alerts). **Momentum** and **Exhaustion** did better when **every** engine `UP`/`DOWN` is counted, so live dispatch matches that:
+
+- **Mirror:** full `SignalDispatcher` rules — at most one alert per candle open time, and **no** alert if direction matches the **previous emitted** alert (any setup).
+- **Momentum** and **Exhaustion:** still at most one alert per candle open time, but **same-direction back-to-back is allowed** (all raw engine fires are sent).
+
+Implemented via `usesStrictDirectionDedupe(setup)` in `src/signal/dispatcher.ts` (backtest uses the same dispatcher).
+
 ## Skip Rules (No Trade / No Signal)
 
 - Choppy: last `CHOP_LOOKBACK` candles alternate color
