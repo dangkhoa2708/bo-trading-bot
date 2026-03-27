@@ -8,6 +8,10 @@ function escapeHtml(s: string): string {
     .replaceAll('"', "&quot;");
 }
 
+function fmtPrice(n: number): string {
+  return n.toFixed(2);
+}
+
 const MAX_DETAIL_ROWS = 25;
 
 /** HTML report for Telegram (aligned with daily/weekly summary shape). */
@@ -27,7 +31,11 @@ export function buildBacktestReportHtml(r: BacktestResult): string {
                 : row.predictionResult === "WRONG"
                   ? "❌"
                   : "⏳";
-            return `• ${pred} <code>${escapeHtml(row.time)}</code> <b>${escapeHtml(row.signal)}</b> ${escapeHtml(row.setup)} — <i>${escapeHtml(row.reason)}</i>`;
+            const nextPart =
+              row.nextClose !== undefined
+                ? fmtPrice(row.nextClose)
+                : "—";
+            return `• ${pred} <code>${escapeHtml(row.time)}</code> <b>${escapeHtml(row.signal)}</b> ${escapeHtml(row.setup)} — baseline <code>${fmtPrice(row.baselineClose)}</code> → next <code>${nextPart}</code> — <i>${escapeHtml(row.reason)}</i>`;
           }),
           r.rows.length > MAX_DETAIL_ROWS
             ? `<i>… ${r.rows.length - MAX_DETAIL_ROWS} older row(s) omitted</i>`

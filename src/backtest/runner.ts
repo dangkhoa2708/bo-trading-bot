@@ -27,6 +27,10 @@ export type BacktestEmittedRow = {
   signal: string;
   setup: string;
   reason: string;
+  /** Signal candle close (baseline for prediction). */
+  baselineClose: number;
+  /** Next candle close when resolved. */
+  nextClose?: number;
   /** Filled when the next candle closed; omitted if replay ended before resolve. */
   predictionResult?: "RIGHT" | "WRONG";
 };
@@ -138,6 +142,7 @@ export async function runBacktest(): Promise<BacktestResult | BacktestError> {
       );
       if (row) {
         row.predictionResult = status;
+        row.nextClose = c.close;
       }
 
       if (
@@ -192,6 +197,7 @@ export async function runBacktest(): Promise<BacktestResult | BacktestError> {
       signal: result.signal,
       setup: result.setup,
       reason: result.reason,
+      baselineClose: c.close,
     });
 
     pendingPrediction = {
