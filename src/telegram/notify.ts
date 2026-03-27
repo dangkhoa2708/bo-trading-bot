@@ -14,6 +14,8 @@ import {
 import { getStatusSnapshot } from "../runtime/status.js";
 import { buildChartTestTelegramPayload } from "../logging/verify.js";
 import { tradingViewBinanceUrl } from "../chart/externalLinks.js";
+import { runBacktest } from "../backtest/runner.js";
+import { buildBacktestReportHtml } from "../report/backtest.js";
 
 type ReportInlineButton =
   | { text: string; url: string }
@@ -156,6 +158,29 @@ export async function startTelegramCommandListener(): Promise<void> {
       config.interval,
     );
     await ctx.reply(text, { parse_mode: "HTML", reply_markup: replyMarkup });
+  });
+  b.command("backtest", async (ctx) => {
+    const chatId = String(ctx.chat?.id ?? "");
+    if (chatId !== config.telegramChatId) {
+      await ctx.reply("Unauthorized chat for this bot instance.");
+      return;
+    }
+    const cid = ctx.chat?.id;
+    if (cid !== undefined) {
+      await ctx.telegram.sendChatAction(cid, "typing");
+    }
+    const r = await runBacktest();
+    if (!r.ok) {
+      await ctx.reply(`Backtest failed: ${r.message}`);
+      return;
+    }
+    const chartUrl = tradingViewBinanceUrl(config.symbol, "5m");
+    await ctx.reply(buildBacktestReportHtml(r), {
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [[{ text: "📊 Open chart (5m)", url: chartUrl }]],
+      },
+    });
   });
   b.on("callback_query", async (ctx) => {
     const cq = ctx.callbackQuery;
