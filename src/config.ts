@@ -84,6 +84,10 @@ export type BotConfig = {
 
 // Strategy/runtime settings live here (code-level config).
 // Secrets live in `.env` only (Telegram token/chat id).
+//
+// Default preset is **relaxed** vs the original: higher ATR ceiling (volatile 5m BNB),
+// slightly easier momentum bodies/ranges, looser chop/sideways/low-vol, softer Mirror guards,
+// and fewer level / extended-leg vetoes — more signals, more false positives.
 const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   symbol: "BNBUSDT",
   interval: "5m",
@@ -92,48 +96,51 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   emaPeriod: 20,
   bodyLookback: 20,
 
-  // Momentum: 3 strong candles + EMA side (moderately strict vs avg / range / body quality).
-  momentumBodyVsAvg: 0.67,
-  momentumRangeVsAvg: 0.67,
-  minBodyToRange: 0.40,
-  maxCloseToExtremePct: 0.42,
+  // Momentum: 3 same-color bars vs baseline — looser body/range and wick tolerance.
+  momentumBodyVsAvg: 0.56,
+  momentumRangeVsAvg: 0.56,
+  minBodyToRange: 0.33,
+  maxCloseToExtremePct: 0.48,
 
-  exhaustionRunMin: 4,
-  exhaustionRevMinPrevRangeMult: 0.26,
-  exhaustionRevMaxPrevRangeMult: 0.56,
-  exhaustionApplyLevelReconfirm: true,
+  exhaustionRunMin: 3,
+  exhaustionRevMinPrevRangeMult: 0.2,
+  exhaustionRevMaxPrevRangeMult: 0.62,
+  /** Off = fewer exhaustion vetoes near S/R (more signals). */
+  exhaustionApplyLevelReconfirm: false,
 
-  chopLookback: 3,
-  lowVolFactor: 0.38,
+  /** Longer alternating window required → fewer “choppy” skips. */
+  chopLookback: 4,
+  /** Lower = harder to qualify as “low vol” skip. */
+  lowVolFactor: 0.3,
   lowVolCompare: 20,
 
   atrPeriod: 14,
   minAtrPct: 0.00005,
-  maxAtrPct: 0.03,
+  /** Was 3%; sharp 5m moves often exceed that and produced no signals. */
+  maxAtrPct: 0.055,
 
-  // Wider band vs EMA = fewer false “sideways” skips on slow grinds.
-  sidewaysEmaPct: 0.00085,
+  // Narrower “sideways” band vs EMA → fewer sideways skips.
+  sidewaysEmaPct: 0.0007,
 
-  // Mirror (Setup C) guards: avoid fake bounces in strong downtrend / post-dump.
-  mirrorMaxBelowEmaPct: 0.004,
-  mirrorDumpAtrMult: 3.5,
+  // Mirror UP: allow bounce setups slightly further below EMA; less dump veto.
+  mirrorMaxBelowEmaPct: 0.01,
+  mirrorDumpAtrMult: 4.5,
   mirrorDumpLookback: 2,
   mirrorWeakRedBodyRangePct: 0.62,
   mirrorDownLightReconfirm: true,
 
-  // Reconfirmation: balanced — fewer vetoes than ultra-strict, still filters worst cases.
   momentumMicroPauseBodyAtrMult: 0.35,
   momentumMicroPauseBodyVsMedianMult: 0.42,
-  momentumMaxImpulseRun: 7,
+  momentumMaxImpulseRun: 9,
 
   levelLookbackShort: 10,
   levelLookbackLong: 50,
-  // Tighter “near level” = fewer false vetoes at structure (more signals).
-  levelNearAtrMult: 0.32,
-  levelNearPricePct: 0.00055,
+  /** Smaller buffer → fewer “near support/resistance” blocks. */
+  levelNearAtrMult: 0.24,
+  levelNearPricePct: 0.00042,
 
   momentumSameDirWindow: 16,
-  momentumMaxSameDirBarsInWindow: 9,
+  momentumMaxSameDirBarsInWindow: 11,
 
   mirrorMaxGreenBodyAtrMult: 4.2,
   mirrorMaxGreenBodyVsMedianMult: 7.0,

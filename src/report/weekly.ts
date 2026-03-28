@@ -45,7 +45,7 @@ type PredictionRow = {
   botExpected?: "UP" | "DOWN";
   humanPick?: "UP" | "DOWN" | null;
   actual: "UP" | "DOWN" | "FLAT" | string;
-  result: "RIGHT" | "WRONG" | string;
+  result?: "RIGHT" | "WRONG" | "IGNORED" | "PLACEMENT" | string;
   setup?: string;
 };
 
@@ -76,6 +76,8 @@ type WeeklyReportData = {
   up: number;
   down: number;
   setups: string;
+  ignoredNoBetCount: number;
+  placementResolvedCount: number;
   botPrediction: DualPredictionSection;
   myPicks: DualPredictionSection;
   details: DetailItem[];
@@ -136,6 +138,8 @@ function buildWeeklyReportData(): WeeklyReportData {
       up: 0,
       down: 0,
       setups: "-",
+      ignoredNoBetCount: 0,
+      placementResolvedCount: 0,
       botPrediction: emptySection(),
       myPicks: emptySection(),
       details: [],
@@ -185,6 +189,13 @@ function buildWeeklyReportData(): WeeklyReportData {
         : "Other",
   );
 
+  const ignoredNoBetCount = reportPredictions.filter(
+    (p) => p.result === "IGNORED",
+  ).length;
+  const placementResolvedCount = reportPredictions.filter(
+    (p) => p.result === "PLACEMENT",
+  ).length;
+
   const details: DetailItem[] = reportSignals.map((s, idx) => {
     const sid = s.signalId ?? `${s.openTime}-${s.signal}-${s.setup}`;
     const p = predBySignalId.get(sid) ?? predByFromOpen.get(s.openTime);
@@ -214,17 +225,21 @@ function buildWeeklyReportData(): WeeklyReportData {
       setup: s.setup,
       reason: s.reason,
       prediction: p
-        ? ((): string => {
-            let s = `${p.expected} → ${p.actual}`;
-            if (p.botExpected !== undefined) {
-              s += ` · bot ${p.botExpected}`;
-              s +=
-                p.humanPick != null ? ` · you ${p.humanPick}` : ` · you —`;
-            }
-            return s;
-          })()
+        ? p.result === "IGNORED"
+          ? "— (no on-chain bet · ignored)"
+          : p.result === "PLACEMENT"
+            ? "— (bet placed · see Pancake / ledger)"
+            : ((): string => {
+                let t = `${p.expected} → ${p.actual}`;
+                if (p.botExpected !== undefined) {
+                  t += ` · bot ${p.botExpected}`;
+                  t +=
+                    p.humanPick != null ? ` · you ${p.humanPick}` : ` · you —`;
+                }
+                return t;
+              })()
         : "PENDING",
-      result: p ? p.result : "PENDING",
+      result: p ? (p.result ?? "PENDING") : "PENDING",
       resultVsBot: p ? (scoreRowVsBot(p) ?? "—") : "PENDING",
       resultVsMyPick: p ? (scoreRowVsMyPick(p) ?? "—") : "PENDING",
       baselineClose: p ? p.baselineClose : null,
@@ -246,6 +261,8 @@ function buildWeeklyReportData(): WeeklyReportData {
     up,
     down,
     setups: setups || "-",
+    ignoredNoBetCount,
+    placementResolvedCount,
     botPrediction: dual.bot,
     myPicks: dual.myPicks,
     details,
@@ -298,6 +315,10 @@ export function buildWeeklyReportLines(): string[] {
     `  Total     : ${d.signalTotal}`,
     `  UP / DOWN : ${d.up} / ${d.down}`,
     `  Setups    : ${d.setups}`,
+    "",
+    "Prediction resolution",
+    `  Ignored (no bet) : ${d.ignoredNoBetCount}`,
+    `  With Pancake bet : ${d.placementResolvedCount}`,
     "",
     "Bot prediction (vs next close)",
     `  Total     : ${d.botPrediction.total}`,
@@ -373,7 +394,11 @@ function buildWeeklyReportHeaderLinesHtml(d: WeeklyReportData): string[] {
     `• UP / DOWN: <code>${d.up} / ${d.down}</code>`,
     `• Setups: <code>${d.setups}</code>`,
     "",
-    "🤖 <b>Bot prediction</b> <i>(vs next close)</i>",
+    "🧮 <b>Prediction resolution</b>",
+    `• Ignored <i>(no on-chain bet)</i>: <code>${d.ignoredNoBetCount}</code>`,
+    `• With Pancake bet <i>(outcome on-chain)</i>: <code>${d.placementResolvedCount}</code>`,
+    "",
+    "🤖 <b>Bot prediction</b> <i>(candle score — legacy rows only)</i>",
     `• Total: <code>${bot.total}</code>`,
     `• ✅ Right: <code>${bot.right}</code>`,
     `• ❌ Wrong: <code>${bot.wrong}</code>`,
@@ -387,7 +412,7 @@ function buildWeeklyReportHeaderLinesHtml(d: WeeklyReportData): string[] {
       ? `• Other: <code>${bot.bySetup.Other.total}</code> (✅ <code>${bot.bySetup.Other.right}</code> / ❌ <code>${bot.bySetup.Other.wrong}</code>) — <code>${bot.bySetup.Other.winRatePct.toFixed(1)}%</code>`
       : "",
     "",
-    "🧑‍💻 <b>My picks</b> <i>(Telegram buttons only)</i>",
+    "🧑‍💻 <b>My picks</b> <i>(Telegram buttons · candle score, legacy rows only)</i>",
     `• Total: <code>${my.total}</code>`,
     `• ✅ Right: <code>${my.right}</code>`,
     `• ❌ Wrong: <code>${my.wrong}</code>`,

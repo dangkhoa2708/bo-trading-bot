@@ -52,34 +52,34 @@ export async function appendPancakePlacementSettlement(args: {
   claimTxHash?: string;
   settledOffBot?: boolean;
 }): Promise<void> {
-  const betWei = BigInt(args.row.valueWei);
-  const profitWei = args.claimWei - betWei;
-  const bnbUsd = await fetchBnbUsdtPrice();
-  const rec: PancakePlacementRecord = {
-    placementId: args.row.placementId,
-    signalId: args.row.signalId,
-    ...(args.row.predictionId !== undefined
-      ? { predictionId: args.row.predictionId }
-      : {}),
-    epoch: args.row.epoch,
-    direction: args.row.direction,
-    betWei: betWei.toString(),
-    claimWei: args.claimWei.toString(),
-    profitWei: profitWei.toString(),
-    betAmountBnb: formatEther(betWei),
-    claimAmountBnb: formatEther(args.claimWei),
-    profitBnb: formatEther(profitWei),
-    outcome: args.outcome,
-    betTxHash: args.row.betTxHash,
-    claimTxHash: args.claimTxHash,
-    settledAt: new Date().toISOString(),
-    bnbUsdAtSettle: bnbUsd,
-    stakeUsdtApprox: usdtFromBnbWei(betWei, bnbUsd),
-    claimUsdtApprox: usdtFromBnbWei(args.claimWei, bnbUsd),
-    profitUsdtApprox: usdtFromBnbWei(profitWei, bnbUsd),
-    settledOffBot: args.settledOffBot,
-  };
   try {
+    const betWei = BigInt(args.row.valueWei);
+    const profitWei = args.claimWei - betWei;
+    const bnbUsd = await fetchBnbUsdtPrice();
+    const rec: PancakePlacementRecord = {
+      placementId: args.row.placementId,
+      signalId: args.row.signalId,
+      ...(args.row.predictionId !== undefined
+        ? { predictionId: args.row.predictionId }
+        : {}),
+      epoch: args.row.epoch,
+      direction: args.row.direction,
+      betWei: betWei.toString(),
+      claimWei: args.claimWei.toString(),
+      profitWei: profitWei.toString(),
+      betAmountBnb: formatEther(betWei),
+      claimAmountBnb: formatEther(args.claimWei),
+      profitBnb: formatEther(profitWei),
+      outcome: args.outcome,
+      betTxHash: args.row.betTxHash,
+      claimTxHash: args.claimTxHash,
+      settledAt: new Date().toISOString(),
+      bnbUsdAtSettle: bnbUsd,
+      stakeUsdtApprox: usdtFromBnbWei(betWei, bnbUsd),
+      claimUsdtApprox: usdtFromBnbWei(args.claimWei, bnbUsd),
+      profitUsdtApprox: usdtFromBnbWei(profitWei, bnbUsd),
+      settledOffBot: args.settledOffBot,
+    };
     if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
     fs.appendFileSync(LEDGER_FILE, `${JSON.stringify(rec)}\n`, "utf8");
   } catch (e) {

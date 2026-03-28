@@ -51,7 +51,6 @@ import {
   registerPendingPancakeBet,
   removePancakeBet,
 } from "../pancakeswap/betTracker.js";
-import { startPancakeOutcomePoller } from "../pancakeswap/outcomePoller.js";
 import { appendPancakePlacementSettlement } from "../pancakeswap/placementLedger.js";
 
 type PlacementContext =
@@ -650,7 +649,6 @@ export async function startTelegramCommandListener(): Promise<void> {
   });
   await b.launch();
   commandListenerStarted = true;
-  startPancakeOutcomePoller(sendTelegramText);
 }
 
 export async function sendTelegramAlert(

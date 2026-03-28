@@ -33,9 +33,66 @@ describe("buildDualPredictionStats", () => {
     expect(d.myPicks.right).toBe(0);
     expect(d.myPicks.wrong).toBe(1);
   });
+
+  it("excludes IGNORED and PLACEMENT rows from candle stats", () => {
+    const rows = [
+      {
+        fromOpenTime: 1,
+        expected: "UP",
+        botExpected: "UP" as const,
+        humanPick: null,
+        actual: "DOWN",
+        setup: "Momentum",
+        result: "IGNORED",
+      },
+      {
+        fromOpenTime: 2,
+        expected: "UP",
+        botExpected: "UP" as const,
+        humanPick: "UP" as const,
+        actual: "DOWN",
+        setup: "Mirror",
+        result: "PLACEMENT",
+      },
+      {
+        fromOpenTime: 3,
+        expected: "UP",
+        botExpected: "UP" as const,
+        humanPick: null,
+        actual: "UP",
+        setup: "Mirror",
+        result: "RIGHT",
+      },
+    ];
+    const d = buildDualPredictionStats(rows, (p) => p.setup ?? "Other");
+    expect(d.bot.total).toBe(1);
+    expect(d.bot.right).toBe(1);
+    expect(d.myPicks.total).toBe(0);
+  });
 });
 
 describe("scoreRowVsBot", () => {
+  it("returns null for IGNORED / PLACEMENT", () => {
+    expect(
+      scoreRowVsBot({
+        fromOpenTime: 0,
+        expected: "UP",
+        botExpected: "UP",
+        actual: "UP",
+        result: "IGNORED",
+      }),
+    ).toBeNull();
+    expect(
+      scoreRowVsBot({
+        fromOpenTime: 0,
+        expected: "UP",
+        botExpected: "UP",
+        actual: "DOWN",
+        result: "PLACEMENT",
+      }),
+    ).toBeNull();
+  });
+
   it("uses botExpected or legacy expected", () => {
     expect(
       scoreRowVsBot({
@@ -56,6 +113,18 @@ describe("scoreRowVsBot", () => {
 });
 
 describe("scoreRowVsMyPick", () => {
+  it("returns null for IGNORED / PLACEMENT", () => {
+    expect(
+      scoreRowVsMyPick({
+        fromOpenTime: 0,
+        expected: "UP",
+        humanPick: "UP",
+        actual: "UP",
+        result: "PLACEMENT",
+      }),
+    ).toBeNull();
+  });
+
   it("returns null without human pick", () => {
     expect(
       scoreRowVsMyPick({

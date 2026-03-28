@@ -8,7 +8,6 @@ import { SignalDispatcher } from "./signal/dispatcher.js";
 import { evaluate } from "./strategy/engine.js";
 import type { Candle } from "./types.js";
 import {
-  formatPostPredictionTelegramLog,
   formatPrePredictionTelegramLog,
   prePredictionReplyMarkup,
   formatSignalTelegramLog,
@@ -22,10 +21,13 @@ import {
   consumeHumanPickForBar,
   registerAwaitingHumanPick,
 } from "./prediction/humanPick.js";
+import { hasRecordedPancakeBetForPrediction } from "./pancakeswap/hasBetForPrediction.js";
 import { pullFakeSignalIfQueued } from "./prediction/injectedFakeSignal.js";
 import { logRuntime } from "./logging/runtime.js";
+import { startPancakeOutcomePoller } from "./pancakeswap/outcomePoller.js";
 import {
   sendSignalReminderPings,
+  sendTelegramText,
   startTelegramCommandListener,
 } from "./telegram/notify.js";
 
@@ -50,6 +52,9 @@ async function main(): Promise<void> {
   await logRuntime(
     `[main] ${config.symbol} ${config.interval} — buffer ${config.candleBuffer} — dryRun=${config.dryRun}`,
   );
+  if (config.telegramBotToken && config.telegramChatId && !config.dryRun) {
+    startPancakeOutcomePoller(sendTelegramText);
+  }
   void startTelegramCommandListener().catch((e) => {
     console.error("[telegram] command listener failed to start", e);
   });
@@ -97,27 +102,14 @@ async function main(): Promise<void> {
           : c.close < pendingPrediction.baselineClose
             ? "DOWN"
             : "FLAT";
-      const status = actual === scoredExpected ? "RIGHT" : "WRONG";
+      const candleScore = actual === scoredExpected ? "RIGHT" : "WRONG";
+      const hadBet = hasRecordedPancakeBetForPrediction(
+        pendingPrediction.predictionId,
+        pendingPrediction.signalId,
+      );
       await logRuntime(
-        `[post-prediction] id=${pendingPrediction.signalId} for=${new Date(pendingPrediction.fromOpenTime).toISOString()} baseline_close=${pendingPrediction.baselineClose} next_close=${c.close} bot=${botExpected} human=${humanPickOrNull ?? "—"} scored=${scoredExpected} actual=${actual} result=${status} setup=${pendingPrediction.fromSetup}`,
+        `[prediction-resolve] id=${pendingPrediction.signalId} for=${new Date(pendingPrediction.fromOpenTime).toISOString()} baseline_close=${pendingPrediction.baselineClose} next_close=${c.close} bot=${botExpected} human=${humanPickOrNull ?? "—"} scored=${scoredExpected} actual=${actual} candle=${candleScore} hadPancakeBet=${hadBet} setup=${pendingPrediction.fromSetup}`,
         "log",
-        {
-          text: formatPostPredictionTelegramLog({
-            pair: config.symbol,
-            signalId: pendingPrediction.signalId,
-            fromOpenTime: pendingPrediction.fromOpenTime,
-            baselineClose: pendingPrediction.baselineClose,
-            nextOpenTime: c.openTime,
-            nextClose: c.close,
-            botExpected,
-            humanPick: humanPickOrNull,
-            scoredExpected,
-            actual,
-            result: status,
-            setup: pendingPrediction.fromSetup,
-          }),
-          parseMode: "HTML",
-        },
       );
       appendPredictionLog({
         signalId: pendingPrediction.signalId,
@@ -130,7 +122,7 @@ async function main(): Promise<void> {
         botExpected,
         humanPick: humanPickOrNull,
         actual,
-        result: status,
+        result: hadBet ? "PLACEMENT" : "IGNORED",
         setup: pendingPrediction.fromSetup,
       });
       pendingPrediction = null;

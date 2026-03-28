@@ -7,7 +7,15 @@ export type StatsPredictionRow = {
   botExpected?: "UP" | "DOWN";
   humanPick?: "UP" | "DOWN" | null;
   actual: string;
+  /** Excluded from bot / my-picks candle stats when <code>IGNORED</code> or <code>PLACEMENT</code>. */
+  result?: string;
 };
+
+export function countsTowardCandlePredictionStats(p: StatsPredictionRow): boolean {
+  const r = p.result;
+  if (r === "IGNORED" || r === "PLACEMENT") return false;
+  return true;
+}
 
 export type PredBucket = "Momentum" | "Exhaustion" | "Mirror" | "Other";
 
@@ -98,6 +106,7 @@ export function buildDualPredictionStats(
   let myWrong = 0;
 
   for (const p of predictions) {
+    if (!countsTowardCandlePredictionStats(p)) continue;
     const bucket = bucketSetup(setupForRow(p));
     const act = normActual(p.actual);
 
@@ -138,6 +147,7 @@ export function buildDualPredictionStats(
 export function scoreRowVsBot(
   p: StatsPredictionRow,
 ): "RIGHT" | "WRONG" | null {
+  if (!countsTowardCandlePredictionStats(p)) return null;
   const bdir = botDirection(p);
   if (bdir === null) return null;
   return scoreVsExpected(bdir, normActual(p.actual));
@@ -146,6 +156,7 @@ export function scoreRowVsBot(
 export function scoreRowVsMyPick(
   p: StatsPredictionRow,
 ): "RIGHT" | "WRONG" | null {
+  if (!countsTowardCandlePredictionStats(p)) return null;
   if (p.humanPick !== "UP" && p.humanPick !== "DOWN") return null;
   return scoreVsExpected(p.humanPick, normActual(p.actual));
 }

@@ -120,8 +120,16 @@ export function registerPendingPancakeBet(row: {
 }): void {
   const epochStr = row.epoch.toString();
   const rows = readState();
-  if (rows.some((r) => r.epoch === epochStr)) return;
-  rows.push({
+  const hadEpoch = rows.some((r) => r.epoch === epochStr);
+  const next = rows.filter((r) => r.epoch !== epochStr);
+  if (hadEpoch) {
+    console.warn(
+      "[pancake-bet-tracker] replacing pending row for epoch",
+      epochStr,
+      "(same epoch re-registered after successful bet — keeping latest tx)",
+    );
+  }
+  next.push({
     placementId: row.placementId,
     signalId: row.signalId,
     ...(row.predictionId !== undefined ? { predictionId: row.predictionId } : {}),
@@ -133,7 +141,7 @@ export function registerPendingPancakeBet(row: {
     walletAddress: row.walletAddress,
     phase: "awaiting_result",
   });
-  writeState(rows);
+  writeState(next);
 }
 
 export function listTrackedPancakeBets(): TrackedPancakeBet[] {

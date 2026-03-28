@@ -29,7 +29,12 @@ export type PredictionLogRow = {
   /** User's Telegram button choice; omitted or null if not set before resolve. */
   humanPick: "UP" | "DOWN" | null;
   actual: "UP" | "DOWN" | "FLAT";
-  result: "RIGHT" | "WRONG";
+  /**
+   * <code>RIGHT</code>/<code>WRONG</code>: legacy candle-scored rows.
+   * <code>IGNORED</code>: next candle closed with no Pancake bet for this prediction (reports: Ignored cases).
+   * <code>PLACEMENT</code>: bet recorded; outcome is on-chain / Pancake messages, not candle Telegram.
+   */
+  result: "RIGHT" | "WRONG" | "IGNORED" | "PLACEMENT";
   setup: string;
 };
 

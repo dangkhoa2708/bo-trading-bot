@@ -30,21 +30,23 @@ Implemented via `usesStrictDirectionDedupe(setup)` in `src/signal/dispatcher.ts`
 
 - After the **pre-prediction** message, the bot sends **5** reminder Telegram messages, **1 second apart**, plain text: `**Signal Alert** 🔔` (no HTML parse mode), to draw attention.
 - After each emitted signal, the **pre-prediction** Telegram message includes **My pick: UP / DOWN** inline buttons.
-- If you tap a button before the **next** candle closes, that choice is stored (`src/prediction/humanPick.ts`) and used to score **RIGHT/WRONG** vs the next candle (baseline vs next close). If you do not tap, scoring falls back to the **bot** direction.
+- If you tap a button before the **next** candle closes, that choice is stored (`src/prediction/humanPick.ts`) and used as **`expected`** in `logs/predictions.jsonl` when the next candle resolves (falls back to the **bot** direction if you do not tap). There is **no** Telegram “post-prediction” message on resolve; if you placed a Pancake bet, the **poller / claim** messages are the follow-up. If you did **not** place a bet, the row is logged as **ignored** for reports (see below).
 - **Optional on-chain PancakeSwap BNB prediction:** With `BSC_WALLET_PRIVATE_KEY` (64-byte hex EOA key) set, a pre-prediction **UP / DOWN** tap tries **`betBull` / `betBear`** on [PancakePrediction V2](https://developer.pancakeswap.finance/contracts/prediction/addresses) only when the **live** `currentEpoch` is **`_bettable`** (`block.timestamp > startTimestamp` and `< lockTimestamp`). Uses **latest BSC block time** (not server wall clock) and a **fresh read right before broadcast**. If the round is **locked or not open**, the attempt **fails immediately** with ❌ — **no waiting** and **no auto-entry into the next round** (so you are not pushed into an unwanted epoch). **UP → bull**, **DOWN → bear**. Tx uses **`epoch == currentEpoch`**. Wallet must be an **EOA**; **BNB** for stake + gas. **Never commit the key**. ✅/❌ on Telegram. **Dry-run** does not broadcast.
   - **Stake from a real (strategy) signal:** `PANCAKE_PREDICTION_BET_BNB` in `.env` (must be > 0 for a bet to be sent).
   - **Stake from `/fakesignal`:** fixed **0.0015 BNB** (same as `/placement`), **not** `PANCAKE_PREDICTION_BET_BNB`.
 - **Telegram `/fakesignal up` or `/fakesignal down`:** queues a test signal using the last closed Binance kline as baseline, appends `signals.jsonl`, registers picks like a real signal, and sends the **same two Telegram messages as a live emit:** signal alert (Pancake **epoch countdown** snippet + chart buttons) then pre-prediction + UP/DOWN, then reminder pings. The next WebSocket candle close attaches and immediately resolves `pendingPrediction` (same scoring path as live). **Not** available in dry-run. Avoid overlapping a real pending signal.
 - **Telegram `/placement up` or `/placement down`:** same bet path as a pre-prediction tap (does not record a human pick). Test stake **0.0015 BNB**; only `BSC_WALLET_PRIVATE_KEY` required.
-- **Pancake round outcomes (live only):** After a successful on-chain bet, the bot stores the **epoch** plus **`placementId`** (UUID), **`signalId`** (same as the emitted signal for pre-prediction taps, or `MANUAL_PLACEMENT` for `/placement`), and **stake in BNB** (decimal string, e.g. `0.02`) in `logs/pancake-bets-pending.json` (gitignored with `logs/`). A background poller (~30s) watches BSC and sends Telegram when the round settles: **won**, **lost**, **draw (house)**, or **refund available** (oracle path). If you **won** or a **refund** is available, the message includes an inline **Claim** button that submits **`claim([epoch])`** from the same `BSC_WALLET_PRIVATE_KEY`. If you claim elsewhere, the poller records settlement using the stored **estimated payout** and marks **off-bot claim** in the ledger. **Dry-run** does not persist or poll.
+- **Pancake round outcomes (live only):** After a successful on-chain bet, the bot stores the **epoch** plus **`placementId`** (UUID), **`signalId`** (same as the emitted signal for pre-prediction taps, or `MANUAL_PLACEMENT` for `/placement`), and **stake in BNB** (decimal string, e.g. `0.02`) in `logs/pancake-bets-pending.json` (gitignored with `logs/`). Re-using the same **epoch** in that file **replaces** the row (so a new successful bet is always tracked). A background poller (~30s) watches BSC and sends Telegram when the round settles: **won**, **lost**, **draw (house)**, or **refund available** (oracle path). The poller **starts at process boot** whenever Telegram is configured (it does **not** wait for the Telegraf command listener to finish `launch()`), so outcome messages are not delayed by long polling startup. If you **won** or a **refund** is available, the message includes an inline **Claim** button that submits **`claim([epoch])`** from the same `BSC_WALLET_PRIVATE_KEY`. If you claim elsewhere, the poller records settlement using the stored **estimated payout** and marks **off-bot claim** in the ledger. **Dry-run** does not persist or poll.
 - **Pancake placement P&L log:** Each settled placement is appended to `logs/pancake-placements.jsonl` with **bet / claim / profit** in BNB (wei + decimal fields), **outcome** (`won` / `lost` / `draw` / `refund`), tx hashes when known, and **USDT approximations** from Binance **BNBUSDT** at settlement time (null if the price fetch failed). **Daily / weekly** Telegram reports include a **Pancake placements** summary (totals in BNB and ≈ USDT) and per-placement rows in **Show details**.
 - **Signal ↔ prediction ids:** Each line in `logs/signals.jsonl` includes **`signalId`** (deterministic) and **`predictionId`** (UUID assigned when the signal fires). The matching resolution row in `logs/predictions.jsonl` repeats **`signalId`** and the same **`predictionId`**, so the two files join on either field. Settled **`pancake-placements.jsonl`** rows include **`predictionId`** when the bet came from a pre-prediction tap (omitted for `MANUAL_PLACEMENT`). **Daily / weekly** details list **`predictionId`** per signal and, under **On-chain (Pancake)**, any placements linked to that signal (excluding **`/fakesignal`** rows — see below).
-- **Post-prediction** and `logs/predictions.jsonl` always record **both** `botExpected` and `humanPick` (or null), plus `expected` (the direction actually used for the score).
-- **Daily / weekly Telegram reports** split totals into **Bot prediction** (every resolved row vs bot direction) and **My picks** (only rows where you tapped a button), each with overall and per-setup counts, plus **Pancake placements** as above when any rows exist in the report window. Rows from **`/fakesignal`** (`setup: FakeSignal`, `signalId` ending in `-FakeSignal`) and on-chain placements tied to those **signalId**s are **omitted** from report totals and detail lists (live strategy performance only).
+- **`logs/predictions.jsonl` on next-candle resolve:** Always includes **baseline / next close**, **`botExpected`**, **`humanPick`** (or null), **`expected`** (scored direction), and **`actual`**. **`result`** is **`PLACEMENT`** if a Pancake bet for that **`predictionId`** was already recorded (pending tracker or settled ledger); **`IGNORED`** if not (no on-chain bet — **Ignored cases** in daily/weekly reports). Older rows may still show **`RIGHT`** / **`WRONG`** (legacy candle-scored); those still feed **Bot prediction** / **My picks** candle win-rate blocks.
+- **Daily / weekly Telegram reports** include **Prediction resolution**: counts of **Ignored (no bet)** and **With Pancake bet**. **Bot prediction** and **My picks** candle win rates use only legacy **`RIGHT`**/**`WRONG`** rows (new **`IGNORED`**/**`PLACEMENT`** rows are excluded). Per-signal details describe ignored vs placement rows in plain language. Plus **Pancake placements** as above. Rows from **`/fakesignal`** and fake-linked placements remain **omitted** from report totals (see above).
 
 ## Skip Rules (No Trade / No Signal)
 
-- Choppy: last `CHOP_LOOKBACK` candles alternate color
+Concrete numbers are in `src/config.ts`. The **default preset is relaxed** for live 5m BNB: a **higher** `maxAtrPct` (~5.5%) so violent drops/spikes are not rejected as “too chaotic” as often, **chopLookback 4** (harder to count as choppy), and softer momentum / mirror / level vetoes than the original strict tuning — **more signals, more noise**.
+
+- Choppy: last `chopLookback` candles alternate color every bar
 - ATR band filter:
   - compute `ATR_PERIOD`
   - skip when `atr/close < MIN_ATR_PCT` (too quiet)
@@ -163,35 +165,35 @@ From `src/config.ts`:
 - `candleBuffer=50`
 - `emaPeriod=20`
 - `bodyLookback=20`
-- `momentumBodyVsAvg=0.67`
-- `momentumRangeVsAvg=0.67`
-- `minBodyToRange=0.40`
-- `maxCloseToExtremePct=0.42`
-- `exhaustionRunMin=4`
-- `exhaustionRevMinPrevRangeMult=0.26`
-- `exhaustionRevMaxPrevRangeMult=0.56`
-- `exhaustionApplyLevelReconfirm=true`
-- `chopLookback=3`
-- `lowVolFactor=0.38`
+- `momentumBodyVsAvg=0.56`
+- `momentumRangeVsAvg=0.56`
+- `minBodyToRange=0.33`
+- `maxCloseToExtremePct=0.48`
+- `exhaustionRunMin=3`
+- `exhaustionRevMinPrevRangeMult=0.2`
+- `exhaustionRevMaxPrevRangeMult=0.62`
+- `exhaustionApplyLevelReconfirm=false`
+- `chopLookback=4`
+- `lowVolFactor=0.3`
 - `lowVolCompare=20`
 - `atrPeriod=14`
 - `minAtrPct=0.00005`
-- `maxAtrPct=0.03`
-- `sidewaysEmaPct=0.00085`
-- `mirrorMaxBelowEmaPct=0.003`
-- `mirrorDumpAtrMult=3.0`
-- `mirrorDumpLookback=3`
-- `mirrorWeakRedBodyRangePct=0.58`
-- `mirrorDownLightReconfirm=false`
+- `maxAtrPct=0.055`
+- `sidewaysEmaPct=0.0007`
+- `mirrorMaxBelowEmaPct=0.01`
+- `mirrorDumpAtrMult=4.5`
+- `mirrorDumpLookback=2`
+- `mirrorWeakRedBodyRangePct=0.62`
+- `mirrorDownLightReconfirm=true`
 - `momentumMicroPauseBodyAtrMult=0.35`
 - `momentumMicroPauseBodyVsMedianMult=0.42`
-- `momentumMaxImpulseRun=7`
+- `momentumMaxImpulseRun=9`
 - `levelLookbackShort=10`
 - `levelLookbackLong=50`
-- `levelNearAtrMult=0.32`
-- `levelNearPricePct=0.00055`
+- `levelNearAtrMult=0.24`
+- `levelNearPricePct=0.00042`
 - `momentumSameDirWindow=16`
-- `momentumMaxSameDirBarsInWindow=9`
+- `momentumMaxSameDirBarsInWindow=11`
 - `mirrorMaxGreenBodyAtrMult=4.2`
 - `mirrorMaxGreenBodyVsMedianMult=7.0`
 - `mirrorMedianBodyLookback=20`

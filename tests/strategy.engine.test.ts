@@ -72,7 +72,8 @@ describe("strategy evaluate", () => {
   it("blocks Momentum UP when same-color run exceeds max impulse length", () => {
     const base = upTrendBase(18, 100);
     const lastRed = candle(18 * 300_000, 105.4, 105.1, 0.12);
-    const eightGreens = [
+    // One more than config.momentumMaxImpulseRun greens after the red → reconfirm blocks.
+    const manyGreens = [
       candle(19 * 300_000, 105.1, 106.2, 0.15),
       candle(20 * 300_000, 106.2, 107.4, 0.15),
       candle(21 * 300_000, 107.4, 108.6, 0.15),
@@ -81,8 +82,10 @@ describe("strategy evaluate", () => {
       candle(24 * 300_000, 111.0, 112.2, 0.15),
       candle(25 * 300_000, 112.2, 113.4, 0.15),
       candle(26 * 300_000, 113.4, 114.6, 0.15),
+      candle(27 * 300_000, 114.6, 115.8, 0.15),
+      candle(28 * 300_000, 115.8, 117.0, 0.15),
     ];
-    const r = evaluate([...base, lastRed, ...eightGreens]);
+    const r = evaluate([...base, lastRed, ...manyGreens]);
     expect(r.signal).toBe("NONE");
     expect(r.reason).toContain("reconfirm");
   });
@@ -198,8 +201,9 @@ describe("strategy evaluate", () => {
     let p = 100;
     for (let i = 0; i < 30; i++) {
       const o = p;
-      const c = p + 4;
-      candles.push(candle(i * 300_000, o, c, 2));
+      const c = p + 0.2;
+      // Huge range vs close → ATR% above config.maxAtrPct (relaxed default ~5.5%).
+      candles.push(candleOhlc(i * 300_000, o, o + 28, o - 28, c));
       p = c;
     }
     const r = evaluate(candles);
