@@ -17,6 +17,11 @@ import {
   type PancakePlacementAggregate,
 } from "./pancakePlacementReport.js";
 import { escapeHtml } from "../logging/verify.js";
+import {
+  filterPancakeAggregateExcludingFakeSignals,
+  isFakeSignalPredictionRow,
+  isFakeSignalSetup,
+} from "./reportFilters.js";
 
 type SignalRow = {
   signalId?: string;
@@ -117,7 +122,9 @@ function buildDailyReportData(): DailyReportData {
   const signalFile = path.join(process.cwd(), "logs", "signals.jsonl");
   const predictionFile = path.join(process.cwd(), "logs", "predictions.jsonl");
   const today = todayKeyGmt7();
-  const pancake = loadPancakePlacementsForGmt7Day(today);
+  const pancake = filterPancakeAggregateExcludingFakeSignals(
+    loadPancakePlacementsForGmt7Day(today),
+  );
   const emptySection = (): DualPredictionSection => ({
     total: 0,
     right: 0,
@@ -154,11 +161,15 @@ function buildDailyReportData(): DailyReportData {
   const todayPredictions = predExists
     ? parseTodayRows<PredictionRow>(predictionFile, today)
     : [];
+  const reportSignals = todaySignals.filter((r) => !isFakeSignalSetup(r.setup));
+  const reportPredictions = todayPredictions.filter((p) =>
+    !isFakeSignalPredictionRow(p),
+  );
 
-  const up = todaySignals.filter((r) => r.signal === "UP").length;
-  const down = todaySignals.filter((r) => r.signal === "DOWN").length;
+  const up = reportSignals.filter((r) => r.signal === "UP").length;
+  const down = reportSignals.filter((r) => r.signal === "DOWN").length;
   const bySetup = new Map<string, number>();
-  for (const r of todaySignals) {
+  for (const r of reportSignals) {
     bySetup.set(r.setup, (bySetup.get(r.setup) ?? 0) + 1);
   }
   const setupParts = [...bySetup.entries()]
@@ -168,18 +179,18 @@ function buildDailyReportData(): DailyReportData {
 
   const predByFromOpen = new Map<number, PredictionRow>();
   const predBySignalId = new Map<string, PredictionRow>();
-  for (const p of todayPredictions) {
+  for (const p of reportPredictions) {
     predByFromOpen.set(p.fromOpenTime, p);
     if (p.signalId) predBySignalId.set(p.signalId, p);
   }
 
   const setupBySignalId = new Map<string, string>();
-  for (const s of todaySignals) {
+  for (const s of reportSignals) {
     const sid = s.signalId ?? `${s.openTime}-${s.signal}-${s.setup}`;
     setupBySignalId.set(sid, s.setup);
   }
 
-  const dual = buildDualPredictionStats(todayPredictions, (p) =>
+  const dual = buildDualPredictionStats(reportPredictions, (p) =>
     p.setup && p.setup.trim()
       ? p.setup
       : p.signalId
@@ -187,7 +198,7 @@ function buildDailyReportData(): DailyReportData {
         : "Other",
   );
 
-  const details: DetailItem[] = todaySignals.map((s, idx) => {
+  const details: DetailItem[] = reportSignals.map((s, idx) => {
     const sid = s.signalId ?? `${s.openTime}-${s.signal}-${s.setup}`;
     const p = predBySignalId.get(sid) ?? predByFromOpen.get(s.openTime);
     const predictionId = p?.predictionId ?? s.predictionId;
@@ -237,14 +248,14 @@ function buildDailyReportData(): DailyReportData {
   });
 
   const hasLogs =
-    todaySignals.length > 0 ||
-    todayPredictions.length > 0 ||
+    reportSignals.length > 0 ||
+    reportPredictions.length > 0 ||
     pancake.count > 0;
 
   return {
     hasLogs,
     date: today,
-    signalTotal: todaySignals.length,
+    signalTotal: reportSignals.length,
     up,
     down,
     setups: setupParts || "-",

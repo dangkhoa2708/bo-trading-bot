@@ -17,6 +17,11 @@ import {
   type PancakePlacementAggregate,
 } from "./pancakePlacementReport.js";
 import { escapeHtml } from "../logging/verify.js";
+import {
+  filterPancakeAggregateExcludingFakeSignals,
+  isFakeSignalPredictionRow,
+  isFakeSignalSetup,
+} from "./reportFilters.js";
 
 type SignalRow = {
   signalId?: string;
@@ -104,7 +109,9 @@ function buildWeeklyReportData(): WeeklyReportData {
   const now = Date.now();
   const sinceMs = now - 7 * 24 * 60 * 60 * 1000;
   const windowLabel = `${fmtGmt7(sinceMs)} -> ${fmtGmt7(now)}`;
-  const pancake = loadPancakePlacementsSince(sinceMs);
+  const pancake = filterPancakeAggregateExcludingFakeSignals(
+    loadPancakePlacementsSince(sinceMs),
+  );
 
   const emptySection = (): DualPredictionSection => ({
     total: 0,
@@ -142,11 +149,16 @@ function buildWeeklyReportData(): WeeklyReportData {
   const predictions = predExists
     ? parseRecentRows<PredictionRow>(predictionFile, sinceMs)
     : [];
+  const reportSignals = signals.filter((r) => !isFakeSignalSetup(r.setup));
+  const reportPredictions = predictions.filter((p) =>
+    !isFakeSignalPredictionRow(p),
+  );
 
-  const up = signals.filter((r) => r.signal === "UP").length;
-  const down = signals.filter((r) => r.signal === "DOWN").length;
+  const up = reportSignals.filter((r) => r.signal === "UP").length;
+  const down = reportSignals.filter((r) => r.signal === "DOWN").length;
   const bySetup = new Map<string, number>();
-  for (const r of signals) bySetup.set(r.setup, (bySetup.get(r.setup) ?? 0) + 1);
+  for (const r of reportSignals)
+    bySetup.set(r.setup, (bySetup.get(r.setup) ?? 0) + 1);
   const setups = [...bySetup.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${k}:${v}`)
@@ -154,18 +166,18 @@ function buildWeeklyReportData(): WeeklyReportData {
 
   const predByFromOpen = new Map<number, PredictionRow>();
   const predBySignalId = new Map<string, PredictionRow>();
-  for (const p of predictions) {
+  for (const p of reportPredictions) {
     predByFromOpen.set(p.fromOpenTime, p);
     if (p.signalId) predBySignalId.set(p.signalId, p);
   }
 
   const setupBySignalId = new Map<string, string>();
-  for (const s of signals) {
+  for (const s of reportSignals) {
     const sid = s.signalId ?? `${s.openTime}-${s.signal}-${s.setup}`;
     setupBySignalId.set(sid, s.setup);
   }
 
-  const dual = buildDualPredictionStats(predictions, (p) =>
+  const dual = buildDualPredictionStats(reportPredictions, (p) =>
     p.setup && p.setup.trim()
       ? p.setup
       : p.signalId
@@ -173,7 +185,7 @@ function buildWeeklyReportData(): WeeklyReportData {
         : "Other",
   );
 
-  const details: DetailItem[] = signals.map((s, idx) => {
+  const details: DetailItem[] = reportSignals.map((s, idx) => {
     const sid = s.signalId ?? `${s.openTime}-${s.signal}-${s.setup}`;
     const p = predBySignalId.get(sid) ?? predByFromOpen.get(s.openTime);
     const predictionId = p?.predictionId ?? s.predictionId;
@@ -223,12 +235,14 @@ function buildWeeklyReportData(): WeeklyReportData {
   });
 
   const hasLogs =
-    signals.length > 0 || predictions.length > 0 || pancake.count > 0;
+    reportSignals.length > 0 ||
+    reportPredictions.length > 0 ||
+    pancake.count > 0;
 
   return {
     hasLogs,
     windowLabel,
-    signalTotal: signals.length,
+    signalTotal: reportSignals.length,
     up,
     down,
     setups: setups || "-",
