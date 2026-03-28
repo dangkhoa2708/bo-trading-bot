@@ -22,7 +22,10 @@ import {
   registerAwaitingHumanPick,
 } from "./prediction/humanPick.js";
 import { logRuntime } from "./logging/runtime.js";
-import { startTelegramCommandListener } from "./telegram/notify.js";
+import {
+  sendSignalReminderPings,
+  startTelegramCommandListener,
+} from "./telegram/notify.js";
 
 function trimBuffer(candles: Candle[], max: number): void {
   while (candles.length > max) candles.shift();
@@ -182,6 +185,7 @@ async function main(): Promise<void> {
         replyMarkup: prePredictionReplyMarkup(c.openTime),
       },
     );
+    await sendSignalReminderPings();
 
     appendSignalLog({
       signalId,

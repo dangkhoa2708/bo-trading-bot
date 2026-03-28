@@ -63,9 +63,35 @@ async function fetchOk(url: string, timeoutMs = 4000): Promise<boolean> {
 let bot: Telegraf | null = null;
 let commandListenerStarted = false;
 
+/** Plain text (no parse_mode) — shows asterisks literally in Telegram. */
+export const SIGNAL_REMINDER_ALERT_TEXT = "**Signal Alert** 🔔";
+
+const SIGNAL_REMINDER_COUNT = 5;
+const SIGNAL_REMINDER_GAP_MS = 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function getBot(): Telegraf {
   if (!bot) bot = new Telegraf(config.telegramBotToken);
   return bot;
+}
+
+/**
+ * After signal + pre-prediction, sends {@link SIGNAL_REMINDER_COUNT} plain-text
+ * pings spaced by {@link SIGNAL_REMINDER_GAP_MS} (no delay between pings in dry-run).
+ */
+export async function sendSignalReminderPings(): Promise<void> {
+  if (!config.telegramBotToken || !config.telegramChatId) return;
+  for (let i = 0; i < SIGNAL_REMINDER_COUNT; i++) {
+    if (i > 0 && !config.dryRun) await sleep(SIGNAL_REMINDER_GAP_MS);
+    try {
+      await sendTelegramText(SIGNAL_REMINDER_ALERT_TEXT);
+    } catch (e) {
+      console.error("[telegram] signal reminder ping failed", e);
+    }
+  }
 }
 
 export async function sendTelegramText(

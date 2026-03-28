@@ -28,6 +28,7 @@ Implemented via `usesStrictDirectionDedupe(setup)` in `src/signal/dispatcher.ts`
 
 ## Human review (pre-prediction)
 
+- After the **pre-prediction** message, the bot sends **5** reminder Telegram messages, **1 second apart**, plain text: `**Signal Alert** 🔔` (no HTML parse mode), to draw attention.
 - After each emitted signal, the **pre-prediction** Telegram message includes **My pick: UP / DOWN** inline buttons.
 - If you tap a button before the **next** candle closes, that choice is stored (`src/prediction/humanPick.ts`) and used to score **RIGHT/WRONG** vs the next candle (baseline vs next close). If you do not tap, scoring falls back to the **bot** direction.
 - **Post-prediction** and `logs/predictions.jsonl` always record **both** `botExpected` and `humanPick` (or null), plus `expected` (the direction actually used for the score).
