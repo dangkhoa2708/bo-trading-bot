@@ -14,6 +14,10 @@ import {
   formatVerifyLog,
 } from "./logging/verify.js";
 import {
+  fetchPancakePredictionBnbCountdown,
+  formatPancakeCountdownSignalSnippetHtml,
+} from "./pancakeswap/predictionCountdown.js";
+import {
   consumeHumanPickForBar,
   registerAwaitingHumanPick,
 } from "./prediction/humanPick.js";
@@ -141,11 +145,14 @@ async function main(): Promise<void> {
 
     const signalId = `${c.openTime}-${result.signal}-${result.setup}`;
     const charts = signalChartLinks(config.symbol, config.interval);
+    const pancakeCd = await fetchPancakePredictionBnbCountdown(config.bscRpcUrl);
     await logRuntime(
       `[signal] id=${signalId} ${new Date(c.openTime).toISOString()} ${result.signal} ${result.setup} — ${result.reason}`,
       "log",
       {
-        text: formatSignalTelegramLog(config.symbol, c, result, signalId, charts),
+        text: formatSignalTelegramLog(config.symbol, c, result, signalId, {
+          extraHtmlBeforeChart: formatPancakeCountdownSignalSnippetHtml(pancakeCd),
+        }),
         parseMode: "HTML",
         replyMarkup: charts.replyMarkup,
       },

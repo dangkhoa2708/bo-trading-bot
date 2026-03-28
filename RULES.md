@@ -124,12 +124,16 @@ Evaluation order is fixed:
 
 ## Alert and Logging Contract
 
-- Telegram message includes:
+- Telegram signal message includes:
   - Pair
   - Signal (`UP`/`DOWN`)
   - Setup (`Momentum`/`Exhaustion`/`Mirror`)
+  - Candle open time in **GMT+7** (wall clock, `Asia/Ho_Chi_Minh`)
   - Price
   - Reason
+  - **No** chart URL in the message body — use the **TradingView** and **Countdown** inline buttons (Countdown opens [PancakeSwap BNB prediction](https://pancakeswap.finance/prediction?token=BNB)); TradingView link includes `timezone=Asia/Ho_Chi_Minh` so the chart clock opens in **GMT+7** (same as signal timestamps)
+  - The signal message body also includes one **Pancake BNB prediction** line (on-chain epoch, phase, and time to lock/close when applicable), fetched at send time alongside the buttons
+  - Telegram `/livecountdown` reads the same on-chain round timestamps as that page (`PancakePredictionV2` on BSC); optional env `BSC_RPC_URL` overrides the default JSON-RPC endpoint
 - Every emitted signal is appended to `logs/signals.jsonl` with timestamp and metadata
 
 ## Risk Rules (Operational Policy)
@@ -183,6 +187,7 @@ From `src/config.ts`:
 - `mirrorMaxGreenBodyVsMedianMult=7.0`
 - `mirrorMedianBodyLookback=20`
 - `dryRun=false`
+- `bscRpcUrl` default `https://bsc-dataseed.binance.org` (override with `BSC_RPC_URL`)
 
 ## Change Control
 

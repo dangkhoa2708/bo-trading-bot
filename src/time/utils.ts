@@ -11,6 +11,11 @@ export function fmtGmt7(ms: number): string {
   }).format(new Date(ms));
 }
 
+/** Same as {@link fmtGmt7} with explicit zone suffix for signal copy. */
+export function fmtGmt7WithZoneLabel(ms: number): string {
+  return `${fmtGmt7(ms)} GMT+7`;
+}
+
 export function gmt7DateKey(ms: number): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Ho_Chi_Minh",

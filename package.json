@@ -18,6 +18,7 @@
   "dependencies": {
     "dotenv": "^16.4.7",
     "telegraf": "^4.16.3",
+    "viem": "^2.47.6",
     "ws": "^8.18.0"
   },
   "devDependencies": {

@@ -17,6 +17,10 @@ import { tradingViewBinanceUrl } from "../chart/externalLinks.js";
 import { BACKTEST_WINDOW_DAYS, runBacktest } from "../backtest/runner.js";
 import { buildBacktestReportHtml } from "../report/backtest.js";
 import { recordHumanPick } from "../prediction/humanPick.js";
+import {
+  buildLiveCountdownTelegramHtml,
+  fetchPancakePredictionBnbCountdown,
+} from "../pancakeswap/predictionCountdown.js";
 
 type ReportInlineButton =
   | { text: string; url: string }
@@ -159,6 +163,19 @@ export async function startTelegramCommandListener(): Promise<void> {
       config.interval,
     );
     await ctx.reply(text, { parse_mode: "HTML", reply_markup: replyMarkup });
+  });
+  b.command("livecountdown", async (ctx) => {
+    const chatId = String(ctx.chat?.id ?? "");
+    if (chatId !== config.telegramChatId) {
+      await ctx.reply("Unauthorized chat for this bot instance.");
+      return;
+    }
+    const cid = ctx.chat?.id;
+    if (cid !== undefined) {
+      await ctx.telegram.sendChatAction(cid, "typing");
+    }
+    const r = await fetchPancakePredictionBnbCountdown(config.bscRpcUrl);
+    await ctx.reply(buildLiveCountdownTelegramHtml(r), { parse_mode: "HTML" });
   });
   b.command("backtest", async (ctx) => {
     const chatId = String(ctx.chat?.id ?? "");

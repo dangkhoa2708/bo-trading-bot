@@ -64,6 +64,9 @@ export type BotConfig = {
 
   dryRun: boolean;
 
+  /** BSC JSON-RPC for PancakeSwap Prediction countdown (`/livecountdown`). */
+  bscRpcUrl: string;
+
   telegramBotToken: string;
   telegramChatId: string;
 };
@@ -126,10 +129,13 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   mirrorMedianBodyLookback: 20,
 
   dryRun: false,
+
+  bscRpcUrl: "https://bsc-dataseed.binance.org",
 };
 
 export const config: BotConfig = {
   ...defaults,
+  bscRpcUrl: process.env.BSC_RPC_URL ?? defaults.bscRpcUrl,
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
   telegramChatId: process.env.TELEGRAM_CHAT_ID ?? "",
 };

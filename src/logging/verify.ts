@@ -1,5 +1,6 @@
 import type { Candle, StrategyResult } from "../types.js";
 import { signalChartLinks, type SignalChartLinks } from "../chart/externalLinks.js";
+import { fmtGmt7WithZoneLabel } from "../time/utils.js";
 import {
   candleColor,
   candleStrength,
@@ -16,7 +17,7 @@ const ANSI = {
   gray: "\x1b[90m",
 } as const;
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -86,29 +87,20 @@ export function formatSignalTelegramLog(
   c: Candle,
   result: StrategyResult,
   signalId: string,
-  charts?: Pick<SignalChartLinks, "tradingViewUrl">,
+  options?: { extraHtmlBeforeChart?: string },
 ): string {
   const icon = result.signal === "UP" ? "🟢" : result.signal === "DOWN" ? "🔴" : "⚪️";
-  const timeText = fmtGmt7(c.openTime);
-  const chartLines: string[] =
-    charts !== undefined
-      ? [
-          "",
-          "🗺 <b>Live chart</b> — tap link or button below <i>(opens in Telegram browser)</i>",
-          `• <a href="${escapeHtml(charts.tradingViewUrl)}">TradingView</a> <i>(${escapeHtml(pair)})</i>`,
-          charts.tradingViewUrl,
-        ]
-      : [];
+  const timeText = fmtGmt7WithZoneLabel(c.openTime);
   const conf = setupConfidenceHtmlLine(result.setup);
   return [
     `${icon} <b>Signal</b> <code>${escapeHtml(result.signal)}</code> <b>${escapeHtml(result.setup)}</b>  <code>${escapeHtml(signalId)}</code>`,
     ...(conf !== null ? [conf] : []),
     `<b>Pair</b>: <code>${escapeHtml(pair)}</code>`,
-    `<b>Time</b>: <code>${escapeHtml(timeText)}</code> <i>(GMT+7)</i>`,
+    `<b>Candle open</b>: <code>${escapeHtml(timeText)}</code>`,
     `<b>Price</b>: <code>${fmtPrice(c.close)}</code>`,
     `<b>ID</b>: <code>${escapeHtml(signalId)}</code>`,
     `<b>Reason</b>: <i>${escapeHtml(result.reason)}</i>`,
-    ...chartLines,
+    ...(options?.extraHtmlBeforeChart ? [options.extraHtmlBeforeChart] : []),
     "",
     `${drawTelegramVerticalCandle(c)}`,
   ].join("\n");
