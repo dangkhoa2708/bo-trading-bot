@@ -31,6 +31,8 @@ Implemented via `usesStrictDirectionDedupe(setup)` in `src/signal/dispatcher.ts`
 - After the **pre-prediction** message, the bot sends **5** reminder Telegram messages, **1 second apart**, plain text: `**Signal Alert** 🔔` (no HTML parse mode), to draw attention.
 - After each emitted signal, the **pre-prediction** Telegram message includes **My pick: UP / DOWN** inline buttons.
 - If you tap a button before the **next** candle closes, that choice is stored (`src/prediction/humanPick.ts`) and used to score **RIGHT/WRONG** vs the next candle (baseline vs next close). If you do not tap, scoring falls back to the **bot** direction.
+- **Optional on-chain PancakeSwap BNB prediction:** If `BSC_WALLET_PRIVATE_KEY` (64-byte hex EOA key) and `PANCAKE_PREDICTION_BET_BNB` (e.g. `0.01`) are set in `.env`, the same tap eventually submits **`betBull` / `betBear`** on [PancakePrediction V2](https://developer.pancakeswap.finance/contracts/prediction/addresses) only on the **next** bettable `currentEpoch` after your action: the bot records `currentEpoch` at request time, **skips** that epoch (typically locked/closed when the signal fires), **polls BSC** until `currentEpoch` increases and the new round satisfies `_bettable` (`block.timestamp > startTimestamp` and `< lockTimestamp`), then sends the tx with **`epoch == currentEpoch`** as required by the contract (you cannot pass `epoch+1` in calldata if it is not yet `currentEpoch`). **UP → bull**, **DOWN → bear**. Poll interval **~10 seconds** (light on RPC); max wait **~7 minutes** (~one 5m round + buffer if `executeRound` is slow) before timeout. The wallet must be an **EOA**. You need enough **BNB** for stake + gas. **Never commit the key**; use a **dedicated hot wallet**. A **separate Telegram message** confirms ✅ success (includes epochs at request vs placed) or ❌ failure; if waiting is needed, you also get ⏳ once. **Dry-run** does **not** broadcast or wait on-chain.
+- **Telegram `/placement up` or `/placement down`:** same next-epoch wait + bet path as a pre-prediction tap (does not record a human pick). Test stake is fixed at **0.003 BNB** (does not use `PANCAKE_PREDICTION_BET_BNB`); only `BSC_WALLET_PRIVATE_KEY` is required for this command.
 - **Post-prediction** and `logs/predictions.jsonl` always record **both** `botExpected` and `humanPick` (or null), plus `expected` (the direction actually used for the score).
 - **Daily / weekly Telegram reports** split totals into **Bot prediction** (every resolved row vs bot direction) and **My picks** (only rows where you tapped a button), each with overall and per-setup counts.
 
@@ -189,6 +191,7 @@ From `src/config.ts`:
 - `mirrorMedianBodyLookback=20`
 - `dryRun=false`
 - `bscRpcUrl` default `https://bsc-dataseed.binance.org` (override with `BSC_RPC_URL`)
+- Optional env (secrets, not defaults): `BSC_WALLET_PRIVATE_KEY`, `PANCAKE_PREDICTION_BET_BNB` — on-chain Pancake bet on UP/DOWN tap (see **Human review**)
 
 ## Change Control
 

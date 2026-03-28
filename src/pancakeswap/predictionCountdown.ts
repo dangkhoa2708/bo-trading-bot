@@ -20,7 +20,7 @@ const predictionAbi = parseAbi([
   "function rounds(uint256 epoch) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)",
 ]);
 
-export type PredictionUiPhase = "betting" | "lock" | "ended";
+export type PredictionUiPhase = "pending" | "betting" | "lock" | "ended";
 
 export type PancakePredictionCountdownOk = {
   ok: true;
@@ -51,8 +51,24 @@ export function formatDurationParts(totalSec: number): string {
 }
 
 /**
+ * Matches PancakePredictionV2._bettable: strict `>` start and `<` lock.
+ */
+export function isPancakeRoundBettableAt(
+  nowSec: number,
+  startTimestamp: number,
+  lockTimestamp: number,
+): boolean {
+  return (
+    startTimestamp !== 0 &&
+    lockTimestamp !== 0 &&
+    nowSec > startTimestamp &&
+    nowSec < lockTimestamp
+  );
+}
+
+/**
  * Derive UI phase from round timestamps (chain seconds) and current time.
- * Matches contract `_bettable`: betting strictly between start and lock.
+ * `betting` only when {@link isPancakeRoundBettableAt} is true.
  */
 export function phaseFromRoundWallClock(
   nowSec: number,
@@ -70,7 +86,14 @@ export function phaseFromRoundWallClock(
       headline: "Round not started on-chain yet.",
     };
   }
-  if (nowSec < lockTimestamp) {
+  if (nowSec <= startTimestamp) {
+    return {
+      phase: "pending",
+      secondsRemaining: Math.max(0, startTimestamp + 1 - nowSec),
+      headline: "Round started on-chain — betting opens after first block past start",
+    };
+  }
+  if (isPancakeRoundBettableAt(nowSec, startTimestamp, lockTimestamp)) {
     return {
       phase: "betting",
       secondsRemaining: Math.max(0, lockTimestamp - nowSec),
@@ -161,7 +184,8 @@ export function formatPancakeCountdownSignalSnippetHtml(
     ].join(" — ");
   }
   const t = formatDurationParts(r.secondsRemaining);
-  const target = r.phase === "betting" ? "lock" : "close";
+  const target =
+    r.phase === "betting" ? "lock" : r.phase === "pending" ? "betting open" : "close";
   return `⏱ <b>Pancake BNB prediction</b> epoch <code>${escapeHtml(ep)}</code> — phase <code>${escapeHtml(r.phase)}</code> → ${escapeHtml(target)} in <code>${escapeHtml(t)}</code>`;
 }
 

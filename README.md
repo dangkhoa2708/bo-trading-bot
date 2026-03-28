@@ -17,7 +17,8 @@ Strategy behavior and constraints are defined in `RULES.md`.
 
 ## Current Scope
 
-- Signal bot only (no auto-execution)
+- Binance spot signals only (no Binance order execution)
+- Optional: UP/DOWN on pre-prediction can place a **PancakeSwap BNB prediction** on BSC if you set `BSC_WALLET_PRIVATE_KEY` + `PANCAKE_PREDICTION_BET_BNB` in `.env` (see `RULES.md` — use a hot wallet, never commit keys)
 - Single pair default: `BNBUSDT`
 - Single timeframe: `5m`
 
@@ -99,6 +100,7 @@ Telegram command:
 - `/weeklyreport` - reply with last 7 days report (signals + predictions) for the configured chat
 - `/backtest` — replay the last **3** days of closed klines (ending now) through the same engine + dispatcher as live.
 - `/backtest 7` — last **7** days (max **90**). Binance returns max 1000 candles per request; the client paginates for longer ranges.
+- `/placement up` / `/placement down` — same next-epoch Pancake path as UP/DOWN tap; fixed **0.003 BNB** test stake (only needs wallet key in `.env`, not `PANCAKE_PREDICTION_BET_BNB`); ✅/❌ reply.
 
 ## Configuration
 

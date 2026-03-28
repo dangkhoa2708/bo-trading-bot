@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { parseEther } from "viem";
 
 export type BotConfig = {
   symbol: string;
@@ -67,6 +68,16 @@ export type BotConfig = {
   /** BSC JSON-RPC for PancakeSwap Prediction countdown (`/livecountdown`). */
   bscRpcUrl: string;
 
+  /**
+   * Optional: EOA private key for Pancake BNB prediction when you tap UP/DOWN on pre-prediction.
+   * Set via `BSC_WALLET_PRIVATE_KEY` only — never commit. Empty = no on-chain bet.
+   */
+  bscWalletPrivateKey: string;
+  /**
+   * BNB amount per bet (wei). From `PANCAKE_PREDICTION_BET_BNB` (e.g. `0.01`). `0n` = disabled.
+   */
+  pancakePredictionBetWei: bigint;
+
   telegramBotToken: string;
   telegramChatId: string;
 };
@@ -131,11 +142,27 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   dryRun: false,
 
   bscRpcUrl: "https://bsc-dataseed.binance.org",
+
+  bscWalletPrivateKey: "",
+  pancakePredictionBetWei: 0n,
 };
+
+function loadPancakeBetWei(): bigint {
+  const raw = process.env.PANCAKE_PREDICTION_BET_BNB?.trim();
+  if (!raw) return 0n;
+  try {
+    return parseEther(raw as `${number}`);
+  } catch {
+    console.warn("[config] PANCAKE_PREDICTION_BET_BNB invalid — on-chain bets disabled");
+    return 0n;
+  }
+}
 
 export const config: BotConfig = {
   ...defaults,
   bscRpcUrl: process.env.BSC_RPC_URL ?? defaults.bscRpcUrl,
+  bscWalletPrivateKey: process.env.BSC_WALLET_PRIVATE_KEY?.trim() ?? "",
+  pancakePredictionBetWei: loadPancakeBetWei(),
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
   telegramChatId: process.env.TELEGRAM_CHAT_ID ?? "",
 };

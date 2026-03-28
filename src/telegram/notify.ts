@@ -1,4 +1,5 @@
 import { Telegraf } from "telegraf";
+import { formatEther, parseEther } from "viem";
 import { config } from "../config.js";
 import type { StrategyResult } from "../types.js";
 import {
@@ -21,6 +22,60 @@ import {
   buildLiveCountdownTelegramHtml,
   fetchPancakePredictionBnbCountdown,
 } from "../pancakeswap/predictionCountdown.js";
+import {
+  formatPancakeBetFollowUpHtml,
+  normalizeBscPrivateKey,
+  placePancakeBnbPredictionBet,
+} from "../pancakeswap/predictionBet.js";
+
+type ConfiguredPancakeBetRun =
+  | { outcome: "not_configured" }
+  | { outcome: "dryrun"; plainText: string }
+  | { outcome: "result"; html: string };
+
+/** Default stake for <code>/placement</code> only (live testing; pre-prediction taps use env). */
+const PLACEMENT_TEST_BET_WEI = parseEther("0.003");
+
+/** Shared by UP/DOWN pick callback and <code>/placement</code>. */
+async function runConfiguredPancakeBet(
+  direction: "UP" | "DOWN",
+  options?: {
+    onWaitingForNextRound?: () => Promise<void>;
+    /** If set (e.g. <code>/placement</code>), ignores <code>PANCAKE_PREDICTION_BET_BNB</code>. */
+    betWeiOverride?: bigint;
+  },
+): Promise<ConfiguredPancakeBetRun> {
+  const pk = normalizeBscPrivateKey(config.bscWalletPrivateKey);
+  const betWei = options?.betWeiOverride ?? config.pancakePredictionBetWei;
+  if (betWei > 0n && pk === null && !config.dryRun) {
+    console.warn(
+      "[telegram] PANCAKE_PREDICTION_BET_BNB set but BSC_WALLET_PRIVATE_KEY missing or invalid",
+    );
+  }
+  if (pk === null || betWei === 0n) return { outcome: "not_configured" };
+  if (config.dryRun) {
+    return {
+      outcome: "dryrun",
+      plainText: `[dry-run] Would place Pancake prediction ${direction} for ${formatEther(betWei)} BNB (next bettable epoch only; no tx)`,
+    };
+  }
+  try {
+    const betResult = await placePancakeBnbPredictionBet({
+      rpcUrl: config.bscRpcUrl,
+      privateKey: pk,
+      direction,
+      valueWei: betWei,
+      onWaitingForNextRound: options?.onWaitingForNextRound,
+    });
+    return { outcome: "result", html: formatPancakeBetFollowUpHtml(betResult) };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      outcome: "result",
+      html: formatPancakeBetFollowUpHtml({ ok: false, message: msg }),
+    };
+  }
+}
 
 type ReportInlineButton =
   | { text: string; url: string }
@@ -203,6 +258,79 @@ export async function startTelegramCommandListener(): Promise<void> {
     const r = await fetchPancakePredictionBnbCountdown(config.bscRpcUrl);
     await ctx.reply(buildLiveCountdownTelegramHtml(r), { parse_mode: "HTML" });
   });
+  b.command("placement", async (ctx) => {
+    const chatId = String(ctx.chat?.id ?? "");
+    if (chatId !== config.telegramChatId) {
+      await ctx.reply("Unauthorized chat for this bot instance.");
+      return;
+    }
+    const text = ctx.message && "text" in ctx.message ? ctx.message.text.trim() : "";
+    const tokens = text.split(/\s+/).filter(Boolean);
+    const side = tokens[1]?.toLowerCase();
+    if (side !== "up" && side !== "down") {
+      await ctx.reply(
+        [
+          "🧪 <b>/placement</b> — test Pancake BNB prediction",
+          "",
+          "Usage:",
+          "• <code>/placement up</code> → <code>betBull</code> (same as tap UP)",
+          "• <code>/placement down</code> → <code>betBear</code> (same as tap DOWN)",
+          "",
+          "Needs <code>BSC_WALLET_PRIVATE_KEY</code> only — test stake is fixed at <b>0.003 BNB</b> (not <code>PANCAKE_PREDICTION_BET_BNB</code>).",
+          "Bets only on the <b>next</b> bettable <code>currentEpoch</code> (skips the epoch live at request — polls ~every 10s, max wait ~7 min).",
+          "Reply includes ✅ success or ❌ failure (same as after a pre-prediction tap).",
+        ].join("\n"),
+        { parse_mode: "HTML" },
+      );
+      return;
+    }
+    const direction = side === "up" ? "UP" : "DOWN";
+    const cid = ctx.chat?.id;
+    if (cid !== undefined) await ctx.telegram.sendChatAction(cid, "typing");
+    const runBet = await runConfiguredPancakeBet(direction, {
+      betWeiOverride: PLACEMENT_TEST_BET_WEI,
+      onWaitingForNextRound: async () => {
+        await ctx.reply(
+          [
+            "⏳ <b>/placement</b>",
+            "",
+            "<code>currentEpoch</code> at request is not used — waiting for the <b>next</b> round betting window (~10s between checks, max ~7 min).",
+          ].join("\n"),
+          { parse_mode: "HTML" },
+        );
+      },
+    });
+    if (runBet.outcome === "not_configured") {
+      await ctx.reply(
+        [
+          "⚠️ <b>Placement test</b>",
+          "",
+          "Set <code>BSC_WALLET_PRIVATE_KEY</code> in <code>.env</code>.",
+          "Stake for this command is always <b>0.003 BNB</b> — you do not need <code>PANCAKE_PREDICTION_BET_BNB</code>.",
+        ].join("\n"),
+        { parse_mode: "HTML" },
+      );
+      return;
+    }
+    if (runBet.outcome === "dryrun") {
+      await ctx.reply(
+        [
+          "🧪 <b>/placement</b> <i>(dry-run)</i>",
+          "",
+          `<code>${runBet.plainText}</code>`,
+          "",
+          "<i>No transaction — app is in dry-run mode.</i>",
+        ].join("\n"),
+        { parse_mode: "HTML" },
+      );
+      return;
+    }
+    const label = direction === "UP" ? "up" : "down";
+    await ctx.reply(
+      [`🧪 <b>Placement test</b> <code>/placement ${label}</code>`, "", runBet.html].join("\n"),
+      { parse_mode: "HTML" },
+    );
+  });
   b.command("backtest", async (ctx) => {
     const chatId = String(ctx.chat?.id ?? "");
     if (chatId !== config.telegramChatId) {
@@ -253,6 +381,29 @@ export async function startTelegramCommandListener(): Promise<void> {
         return;
       }
       await ctx.answerCbQuery(`Recorded your pick: ${dir}`);
+
+      const runBet = await runConfiguredPancakeBet(dir, {
+        onWaitingForNextRound: async () => {
+          await sendTelegramText(
+            [
+              "⏳ <b>Pancake bet</b>",
+              "",
+              "<code>currentEpoch</code> when you tapped is skipped — waiting for the <b>next</b> bettable round (~10s between checks, max ~7 min).",
+            ].join("\n"),
+            { parseMode: "HTML" },
+          );
+        },
+      });
+      if (runBet.outcome === "not_configured") return;
+      if (runBet.outcome === "dryrun") {
+        await sendTelegramText(runBet.plainText);
+        return;
+      }
+      try {
+        await sendTelegramText(runBet.html, { parseMode: "HTML" });
+      } catch (sendErr) {
+        console.error("[telegram] could not send bet outcome to chat", sendErr);
+      }
       return;
     }
 

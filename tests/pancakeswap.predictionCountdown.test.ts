@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatDurationParts,
   formatPancakeCountdownSignalSnippetHtml,
+  isPancakeRoundBettableAt,
   phaseFromRoundWallClock,
 } from "../src/pancakeswap/predictionCountdown.js";
 
@@ -16,6 +17,18 @@ describe("pancakeswap predictionCountdown", () => {
     const r = phaseFromRoundWallClock(1000, 0, 1100, 1200);
     expect(r.phase).toBe("ended");
     expect(r.secondsRemaining).toBe(0);
+  });
+
+  it("isPancakeRoundBettableAt matches strict contract bounds", () => {
+    expect(isPancakeRoundBettableAt(1000, 1000, 1100)).toBe(false);
+    expect(isPancakeRoundBettableAt(1001, 1000, 1100)).toBe(true);
+    expect(isPancakeRoundBettableAt(1100, 1000, 1100)).toBe(false);
+  });
+
+  it("phaseFromRoundWallClock: pending at round start boundary", () => {
+    const r = phaseFromRoundWallClock(1000, 1000, 1100, 1200);
+    expect(r.phase).toBe("pending");
+    expect(r.secondsRemaining).toBe(1);
   });
 
   it("phaseFromRoundWallClock: betting before lock", () => {
