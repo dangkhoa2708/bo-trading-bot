@@ -18,9 +18,10 @@ import { getStatusSnapshot } from "../runtime/status.js";
 import {
   buildChartTestTelegramPayload,
   formatPrePredictionTelegramLog,
+  formatSignalTelegramLog,
   prePredictionReplyMarkup,
 } from "../logging/verify.js";
-import { tradingViewBinanceUrl } from "../chart/externalLinks.js";
+import { signalChartLinks, tradingViewBinanceUrl } from "../chart/externalLinks.js";
 import { BACKTEST_WINDOW_DAYS, runBacktest } from "../backtest/runner.js";
 import { buildBacktestReportHtml } from "../report/backtest.js";
 import { appendSignalLog } from "../logger.js";
@@ -36,6 +37,7 @@ import {
 import {
   buildLiveCountdownTelegramHtml,
   fetchPancakePredictionBnbCountdown,
+  formatPancakeCountdownSignalSnippetHtml,
 } from "../pancakeswap/predictionCountdown.js";
 import {
   claimPancakePredictionEpochs,
@@ -388,21 +390,32 @@ export async function startTelegramCommandListener(): Promise<void> {
       setup: FAKE_SIGNAL_SETUP,
       reason,
     });
-    const preHtml = formatPrePredictionTelegramLog({
-      pair: config.symbol,
-      signalId,
-      fromOpenTime: bar.openTime,
-      baselineClose: bar.close,
-      predicted,
+    const charts = signalChartLinks(config.symbol, config.interval);
+    const pancakeCd = await fetchPancakePredictionBnbCountdown(config.bscRpcUrl);
+    const fakeResult: StrategyResult = {
+      signal: predicted,
       setup: FAKE_SIGNAL_SETUP,
       reason,
-    });
+    };
     await sendTelegramText(
-      [
-        "🎭 <b>FAKE SIGNAL</b> <i>(test)</i> — same buttons and reminders as live.",
-        "",
-        preHtml,
-      ].join("\n"),
+      formatSignalTelegramLog(config.symbol, bar, fakeResult, signalId, {
+        extraHtmlBeforeChart: formatPancakeCountdownSignalSnippetHtml(pancakeCd),
+      }),
+      {
+        parseMode: "HTML",
+        replyMarkup: charts.replyMarkup,
+      },
+    );
+    await sendTelegramText(
+      formatPrePredictionTelegramLog({
+        pair: config.symbol,
+        signalId,
+        fromOpenTime: bar.openTime,
+        baselineClose: bar.close,
+        predicted,
+        setup: FAKE_SIGNAL_SETUP,
+        reason,
+      }),
       {
         parseMode: "HTML",
         replyMarkup: prePredictionReplyMarkup(bar.openTime),

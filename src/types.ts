@@ -7,7 +7,12 @@ export type Candle = {
   volume: number;
 };
 
-export type SetupType = "Momentum" | "Exhaustion" | "Mirror" | "None";
+export type SetupType =
+  | "Momentum"
+  | "Exhaustion"
+  | "Mirror"
+  | "None"
+  | "FakeSignal";
 
 export type StrategyResult = {
   signal: "UP" | "DOWN" | "NONE";
