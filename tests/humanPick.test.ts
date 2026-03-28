@@ -33,4 +33,14 @@ describe("humanPick", () => {
     consumeHumanPickForBar(3000);
     expect(getPlacementLinkForOpenTime(3000)).toBeUndefined();
   });
+
+  it("preserves optional betWeiOverride for pick-button stake (e.g. /fakesignal)", () => {
+    const wei = 1_500_000_000_000_000n;
+    registerAwaitingHumanPick(4000, {
+      signalId: "s",
+      predictionId: "p",
+      betWeiOverride: wei,
+    });
+    expect(getPlacementLinkForOpenTime(4000)?.betWeiOverride).toBe(wei);
+  });
 });

@@ -8,6 +8,8 @@ const picks = new Map<number, "UP" | "DOWN">();
 export type PlacementSignalLink = {
   signalId: string;
   predictionId: string;
+  /** When set (e.g. <code>/fakesignal</code>), pick-button placement uses this stake instead of env. */
+  betWeiOverride?: bigint;
 };
 
 const linkByOpenTime = new Map<number, PlacementSignalLink>();

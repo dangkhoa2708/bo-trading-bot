@@ -337,6 +337,7 @@ export async function startTelegramCommandListener(): Promise<void> {
           "• <code>/fakesignal down</code>",
           "",
           "Fetches the <b>last closed</b> kline, logs a row to <code>signals.jsonl</code>, queues the same pending prediction the bot uses for real signals (picked up on the <b>next</b> WebSocket candle close), sends this chat the pre-prediction message + UP/DOWN + reminder pings.",
+          "If you tap UP/DOWN, Pancake placement uses <b>0.0015 BNB</b> (same as <code>/placement</code>), not <code>PANCAKE_PREDICTION_BET_BNB</code>.",
           "<i>Avoid using while a real signal is already waiting for the next candle.</i>",
         ].join("\n"),
         { parse_mode: "HTML" },
@@ -372,7 +373,11 @@ export async function startTelegramCommandListener(): Promise<void> {
       fromSetup: FAKE_SIGNAL_SETUP,
       baselineClose: bar.close,
     });
-    registerAwaitingHumanPick(bar.openTime, { signalId, predictionId });
+    registerAwaitingHumanPick(bar.openTime, {
+      signalId,
+      predictionId,
+      betWeiOverride: PLACEMENT_TEST_BET_WEI,
+    });
     appendSignalLog({
       signalId,
       predictionId,
@@ -567,7 +572,9 @@ export async function startTelegramCommandListener(): Promise<void> {
       }
       await ctx.answerCbQuery(`Recorded your pick: ${dir}`);
 
+      const pickLink = getPlacementLinkForOpenTime(fromOpenTime);
       const runBet = await runConfiguredPancakeBet(dir, {
+        betWeiOverride: pickLink?.betWeiOverride,
         placementContext: { kind: "signal_pick", fromOpenTime },
       });
       if (runBet.outcome === "not_configured") return;
