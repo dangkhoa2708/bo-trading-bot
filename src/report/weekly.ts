@@ -10,7 +10,7 @@ import {
 } from "./predictionStats.js";
 import {
   buildPancakePlacementsDetailsHtml,
-  buildPancakePlacementsSummaryHtmlLines,
+  buildPancakePlacementsSummaryHtmlLinesOrEmpty,
   filterPlacementsForSignalDetail,
   formatLinkedPlacementsDetailHtml,
   loadPancakePlacementsSince,
@@ -350,13 +350,17 @@ export function buildWeeklyReportLines(): string[] {
     ...(d.pancake.count > 0
       ? [
           "",
-          "Pancake placements (settled)",
-          `  Count     : ${d.pancake.count}`,
+          "On-chain P&L (Pancake, settled in window)",
+          `  Settled   : ${d.pancake.count}`,
           `  Stake BNB : ${formatEther(d.pancake.totalBetWei)}  (USDT ≈ at settle: ${d.pancake.sumStakeUsdt === null ? "—" : d.pancake.sumStakeUsdt.toFixed(2)})`,
           `  Claim BNB : ${formatEther(d.pancake.totalClaimWei)}  (USDT ≈ at settle: ${d.pancake.sumClaimUsdt === null ? "—" : d.pancake.sumClaimUsdt.toFixed(2)})`,
-          `  P&L BNB   : ${formatEther(d.pancake.totalProfitWei)}  (USDT ≈ at settle: ${d.pancake.sumProfitUsdt === null ? "—" : d.pancake.sumProfitUsdt.toFixed(2)})`,
+          `  Net P&L   : ${formatEther(d.pancake.totalProfitWei)}  (USDT ≈ at settle: ${d.pancake.sumProfitUsdt === null ? "—" : d.pancake.sumProfitUsdt.toFixed(2)})`,
         ]
-      : []),
+      : [
+          "",
+          "On-chain P&L (Pancake, settled in window)",
+          "  Net P&L   : — (no settled rows in pancake-placements.jsonl for this window)",
+        ]),
     ...detailLines,
     "======================================================",
   ];
@@ -426,7 +430,7 @@ function buildWeeklyReportHeaderLinesHtml(d: WeeklyReportData): string[] {
       ? `• Other: <code>${my.bySetup.Other.total}</code> (✅ <code>${my.bySetup.Other.right}</code> / ❌ <code>${my.bySetup.Other.wrong}</code>) — <code>${my.bySetup.Other.winRatePct.toFixed(1)}%</code>`
       : "",
   ].filter((line) => line !== "");
-  return [...base, ...buildPancakePlacementsSummaryHtmlLines(d.pancake)];
+  return [...base, ...buildPancakePlacementsSummaryHtmlLinesOrEmpty(d.pancake, "weekly")];
 }
 
 function buildWeeklyReportDetailsHtmlForData(d: WeeklyReportData): string {

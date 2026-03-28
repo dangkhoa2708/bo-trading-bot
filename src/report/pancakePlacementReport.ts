@@ -134,12 +134,34 @@ export function buildPancakePlacementsSummaryHtmlLines(
       : "\n<i>USDT ≈ Binance BNBUSDT at each settlement time.</i>";
   return [
     "",
-    "🥞 <b>Pancake placements</b> <i>(settled)</i>",
-    `• Count: <code>${aggr.count}</code>`,
-    `• Stake: <code>${escapeHtml(stakeBnb)}</code> BNB <i>(≈ ${escapeHtml(stakeU)} USDT)</i>`,
-    `• Claimed: <code>${escapeHtml(claimBnb)}</code> BNB <i>(≈ ${escapeHtml(claimU)} USDT)</i>`,
-    `• P&amp;L: <code>${escapeHtml(profitBnb)}</code> BNB <i>(≈ ${escapeHtml(profitU)} USDT)</i>`,
+    "🥞 <b>On-chain P&amp;L</b> <i>(Pancake — settled rounds)</i>",
+    `• Settled placements: <code>${aggr.count}</code>`,
+    `• Stake (sum): <code>${escapeHtml(stakeBnb)}</code> BNB <i>(≈ ${escapeHtml(stakeU)} USDT)</i>`,
+    `• Claimed (sum): <code>${escapeHtml(claimBnb)}</code> BNB <i>(≈ ${escapeHtml(claimU)} USDT)</i>`,
+    `• <b>Net P&amp;L</b> (claimed − stake): <code>${escapeHtml(profitBnb)}</code> BNB <i>(≈ ${escapeHtml(profitU)} USDT)</i>`,
     usdtNote,
+  ];
+}
+
+/**
+ * Same as {@link buildPancakePlacementsSummaryHtmlLines}, but when there are no settled rows
+ * still returns a short block so the report explicitly states that on-chain P&amp;L is zero / N/A for the window.
+ */
+export function buildPancakePlacementsSummaryHtmlLinesOrEmpty(
+  aggr: PancakePlacementAggregate,
+  window: "daily" | "weekly",
+): string[] {
+  const lines = buildPancakePlacementsSummaryHtmlLines(aggr);
+  if (lines.length > 0) return lines;
+  const scope =
+    window === "daily"
+      ? "this calendar day <i>(GMT+7)</i>"
+      : "this 7-day window <i>(GMT+7)</i>";
+  return [
+    "",
+    "🥞 <b>On-chain P&amp;L</b> <i>(Pancake — settled only)</i>",
+    `• <b>Net P&amp;L</b>: — <i>(no settled placements in ${scope})</i>`,
+    "• <i>Totals come from <code>logs/pancake-placements.jsonl</code> when the outcome poller records each settlement. Pending bets are not included.</i>",
   ];
 }
 

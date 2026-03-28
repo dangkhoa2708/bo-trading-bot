@@ -48,7 +48,10 @@ function atrOutOfBand(
   if (atr === null) return { out: false, atrPct: null };
   const last = candles[candles.length - 1]!;
   const atrPct = atr / Math.max(last.close, 1e-9);
-  if (atrPct < config.minAtrPct || atrPct > config.maxAtrPct) {
+  if (atrPct < config.minAtrPct) {
+    return { out: true, atrPct };
+  }
+  if (!config.relaxedSignalFilters && atrPct > config.maxAtrPct) {
     return { out: true, atrPct };
   }
   return { out: false, atrPct };
@@ -180,6 +183,7 @@ function sameDirectionRunLength(
 }
 
 function mirrorGreenNotSpike(candles: Candle[]): boolean {
+  if (config.relaxedSignalFilters) return true;
   const c = candles[candles.length - 1]!;
   const b = body(c);
   const atr = atrLast(candles, config.atrPeriod);
@@ -229,6 +233,7 @@ function momentumPassesReconfirm(
   const atr = atrLast(candles, config.atrPeriod);
   const runLen = sameDirectionRunLength(candles, dir);
   if (runLen > config.momentumMaxImpulseRun) return false;
+  if (config.relaxedSignalFilters) return true;
   // Case 4: extended bearish leg (many reds in window); UP uses run-length only (avoid blocking grinds).
   if (
     dir === "DOWN" &&
@@ -425,7 +430,7 @@ export function evaluate(candles: Candle[]): StrategyResult {
     return { signal: "NONE", setup: "None", reason: "ema unavailable" };
   }
 
-  if (choppy(candles)) {
+  if (!config.relaxedSignalFilters && choppy(candles)) {
     return { signal: "NONE", setup: "None", reason: "choppy / alternating" };
   }
   const atrBand = atrOutOfBand(candles);
@@ -436,10 +441,10 @@ export function evaluate(candles: Candle[]): StrategyResult {
       reason: `atr out of band (${(atrBand.atrPct! * 100).toFixed(3)}%)`,
     };
   }
-  if (lowVolatility(candles)) {
+  if (!config.relaxedSignalFilters && lowVolatility(candles)) {
     return { signal: "NONE", setup: "None", reason: "low volatility" };
   }
-  if (sideways(candles, ema)) {
+  if (!config.relaxedSignalFilters && sideways(candles, ema)) {
     return { signal: "NONE", setup: "None", reason: "sideways vs EMA" };
   }
 

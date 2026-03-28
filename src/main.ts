@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     | null = null;
 
   await logRuntime(
-    `[main] ${config.symbol} ${config.interval} — buffer ${config.candleBuffer} — dryRun=${config.dryRun}`,
+    `[main] ${config.symbol} ${config.interval} — buffer ${config.candleBuffer} — dryRun=${config.dryRun} — relaxedFilters=${config.relaxedSignalFilters}`,
   );
   if (config.telegramBotToken && config.telegramChatId && !config.dryRun) {
     startPancakeOutcomePoller(sendTelegramText);

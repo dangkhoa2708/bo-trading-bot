@@ -65,6 +65,12 @@ export type BotConfig = {
 
   dryRun: boolean;
 
+  /**
+   * When true: skip/soften market-regime gates and spike vetoes so more setups pass — intended
+   * for manual review via Telegram buttons. Toggle in `defaults` below. More false positives.
+   */
+  relaxedSignalFilters: boolean;
+
   /** BSC JSON-RPC for PancakeSwap Prediction countdown (`/livecountdown`). */
   bscRpcUrl: string;
 
@@ -147,6 +153,9 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   mirrorMedianBodyLookback: 20,
 
   dryRun: false,
+
+  /** Set `true` here for looser signals (manual review); see JSDoc on `BotConfig.relaxedSignalFilters`. */
+  relaxedSignalFilters: false,
 
   bscRpcUrl: "https://bsc-dataseed.binance.org",
 

@@ -1,5 +1,7 @@
 # Day 2 - VPS Deployment Basics (SSH, users, PM2)
 
+**Related:** [Pancake wallet, Telegram, `/fakesignal`, reports & strategy tuning (implementation deep-dive)](./pancake-wallet-telegram-strategy-2026-03-28.md) — how on-chain bets, the outcome poller, prediction logging, and relaxed 5m defaults were built and debugged.
+
 This note explains the deployment concepts you’re using to run this trading bot on a VPS 24/7.
 
 The goal: **your bot keeps running even when you close your laptop and disconnect SSH**.
