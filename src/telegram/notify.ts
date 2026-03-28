@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { Telegraf } from "telegraf";
 import { formatEther, parseEther } from "viem";
+import { fetchKlines } from "../binance/rest.js";
 import { config } from "../config.js";
 import type { StrategyResult } from "../types.js";
 import {
@@ -13,20 +15,46 @@ import {
   buildWeeklyReportText,
 } from "../report/weekly.js";
 import { getStatusSnapshot } from "../runtime/status.js";
-import { buildChartTestTelegramPayload } from "../logging/verify.js";
+import {
+  buildChartTestTelegramPayload,
+  formatPrePredictionTelegramLog,
+  prePredictionReplyMarkup,
+} from "../logging/verify.js";
 import { tradingViewBinanceUrl } from "../chart/externalLinks.js";
 import { BACKTEST_WINDOW_DAYS, runBacktest } from "../backtest/runner.js";
 import { buildBacktestReportHtml } from "../report/backtest.js";
-import { recordHumanPick } from "../prediction/humanPick.js";
+import { appendSignalLog } from "../logger.js";
+import {
+  enqueueFakeSignalForNextTick,
+  FAKE_SIGNAL_SETUP,
+} from "../prediction/injectedFakeSignal.js";
+import {
+  getPlacementLinkForOpenTime,
+  recordHumanPick,
+  registerAwaitingHumanPick,
+} from "../prediction/humanPick.js";
 import {
   buildLiveCountdownTelegramHtml,
   fetchPancakePredictionBnbCountdown,
 } from "../pancakeswap/predictionCountdown.js";
 import {
+  claimPancakePredictionEpochs,
   formatPancakeBetFollowUpHtml,
+  formatPancakeClaimTelegramHtml,
   normalizeBscPrivateKey,
   placePancakeBnbPredictionBet,
 } from "../pancakeswap/predictionBet.js";
+import {
+  getPancakeBet,
+  registerPendingPancakeBet,
+  removePancakeBet,
+} from "../pancakeswap/betTracker.js";
+import { startPancakeOutcomePoller } from "../pancakeswap/outcomePoller.js";
+import { appendPancakePlacementSettlement } from "../pancakeswap/placementLedger.js";
+
+type PlacementContext =
+  | { kind: "signal_pick"; fromOpenTime: number }
+  | { kind: "manual_cmd" };
 
 type ConfiguredPancakeBetRun =
   | { outcome: "not_configured" }
@@ -34,15 +62,15 @@ type ConfiguredPancakeBetRun =
   | { outcome: "result"; html: string };
 
 /** Default stake for <code>/placement</code> only (live testing; pre-prediction taps use env). */
-const PLACEMENT_TEST_BET_WEI = parseEther("0.003");
+const PLACEMENT_TEST_BET_WEI = parseEther("0.0015");
 
 /** Shared by UP/DOWN pick callback and <code>/placement</code>. */
 async function runConfiguredPancakeBet(
   direction: "UP" | "DOWN",
   options?: {
-    onWaitingForNextRound?: () => Promise<void>;
     /** If set (e.g. <code>/placement</code>), ignores <code>PANCAKE_PREDICTION_BET_BNB</code>. */
     betWeiOverride?: bigint;
+    placementContext?: PlacementContext;
   },
 ): Promise<ConfiguredPancakeBetRun> {
   const pk = normalizeBscPrivateKey(config.bscWalletPrivateKey);
@@ -56,7 +84,7 @@ async function runConfiguredPancakeBet(
   if (config.dryRun) {
     return {
       outcome: "dryrun",
-      plainText: `[dry-run] Would place Pancake prediction ${direction} for ${formatEther(betWei)} BNB (next bettable epoch only; no tx)`,
+      plainText: `[dry-run] Would place Pancake prediction ${direction} for ${formatEther(betWei)} BNB when live round is bettable (no tx)`,
     };
   }
   try {
@@ -65,8 +93,32 @@ async function runConfiguredPancakeBet(
       privateKey: pk,
       direction,
       valueWei: betWei,
-      onWaitingForNextRound: options?.onWaitingForNextRound,
     });
+    if (betResult.ok) {
+      let signalId = "UNKNOWN_PLACEMENT";
+      let predictionId: string | undefined;
+      const ctx = options?.placementContext;
+      if (ctx?.kind === "signal_pick") {
+        const link = getPlacementLinkForOpenTime(ctx.fromOpenTime);
+        signalId = link?.signalId ?? `unknown:${ctx.fromOpenTime}`;
+        predictionId = link?.predictionId;
+      } else if (ctx?.kind === "manual_cmd") {
+        signalId = "MANUAL_PLACEMENT";
+      }
+      const placementId = randomUUID();
+      const betAmountBnb = formatEther(betWei);
+      registerPendingPancakeBet({
+        placementId,
+        signalId,
+        ...(predictionId !== undefined ? { predictionId } : {}),
+        betAmountBnb,
+        epoch: betResult.epoch,
+        direction: betResult.direction,
+        betTxHash: betResult.txHash,
+        valueWei: betResult.valueWei,
+        walletAddress: betResult.walletAddress,
+      });
+    }
     return { outcome: "result", html: formatPancakeBetFollowUpHtml(betResult) };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -258,6 +310,101 @@ export async function startTelegramCommandListener(): Promise<void> {
     const r = await fetchPancakePredictionBnbCountdown(config.bscRpcUrl);
     await ctx.reply(buildLiveCountdownTelegramHtml(r), { parse_mode: "HTML" });
   });
+  b.command("fakesignal", async (ctx) => {
+    const chatId = String(ctx.chat?.id ?? "");
+    if (chatId !== config.telegramChatId) {
+      await ctx.reply("Unauthorized chat for this bot instance.");
+      return;
+    }
+    if (config.dryRun) {
+      await ctx.reply(
+        "<b>/fakesignal</b> is unavailable in dry-run (Telegram listener is not started).",
+        { parse_mode: "HTML" },
+      );
+      return;
+    }
+    const raw =
+      ctx.message && "text" in ctx.message ? ctx.message.text.trim() : "";
+    const tokens = raw.split(/\s+/).filter(Boolean);
+    const side = tokens[1]?.toLowerCase();
+    if (side !== "up" && side !== "down") {
+      await ctx.reply(
+        [
+          "🎭 <b>/fakesignal</b> — test signal → pre-prediction → pick → Pancake",
+          "",
+          "Usage:",
+          "• <code>/fakesignal up</code>",
+          "• <code>/fakesignal down</code>",
+          "",
+          "Fetches the <b>last closed</b> kline, logs a row to <code>signals.jsonl</code>, queues the same pending prediction the bot uses for real signals (picked up on the <b>next</b> WebSocket candle close), sends this chat the pre-prediction message + UP/DOWN + reminder pings.",
+          "<i>Avoid using while a real signal is already waiting for the next candle.</i>",
+        ].join("\n"),
+        { parse_mode: "HTML" },
+      );
+      return;
+    }
+    const predicted = side === "up" ? "UP" : "DOWN";
+    const cid = ctx.chat?.id;
+    if (cid !== undefined) await ctx.telegram.sendChatAction(cid, "typing");
+    let hist;
+    try {
+      hist = await fetchKlines(config.symbol, config.interval, 3);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await ctx.reply(`Could not fetch klines: <code>${msg}</code>`, {
+        parse_mode: "HTML",
+      });
+      return;
+    }
+    if (hist.length < 1) {
+      await ctx.reply("No kline data returned from Binance.");
+      return;
+    }
+    const bar = hist.length >= 2 ? hist[hist.length - 2]! : hist[hist.length - 1]!;
+    const predictionId = randomUUID();
+    const signalId = `${bar.openTime}-${predicted}-${FAKE_SIGNAL_SETUP}`;
+    const reason = "Telegram /fakesignal test command";
+    enqueueFakeSignalForNextTick({
+      signalId,
+      predictionId,
+      predicted,
+      fromOpenTime: bar.openTime,
+      fromSetup: FAKE_SIGNAL_SETUP,
+      baselineClose: bar.close,
+    });
+    registerAwaitingHumanPick(bar.openTime, { signalId, predictionId });
+    appendSignalLog({
+      signalId,
+      predictionId,
+      ts: new Date().toISOString(),
+      openTime: bar.openTime,
+      price: bar.close,
+      signal: predicted,
+      setup: FAKE_SIGNAL_SETUP,
+      reason,
+    });
+    const preHtml = formatPrePredictionTelegramLog({
+      pair: config.symbol,
+      signalId,
+      fromOpenTime: bar.openTime,
+      baselineClose: bar.close,
+      predicted,
+      setup: FAKE_SIGNAL_SETUP,
+      reason,
+    });
+    await sendTelegramText(
+      [
+        "🎭 <b>FAKE SIGNAL</b> <i>(test)</i> — same buttons and reminders as live.",
+        "",
+        preHtml,
+      ].join("\n"),
+      {
+        parseMode: "HTML",
+        replyMarkup: prePredictionReplyMarkup(bar.openTime),
+      },
+    );
+    await sendSignalReminderPings();
+  });
   b.command("placement", async (ctx) => {
     const chatId = String(ctx.chat?.id ?? "");
     if (chatId !== config.telegramChatId) {
@@ -276,9 +423,9 @@ export async function startTelegramCommandListener(): Promise<void> {
           "• <code>/placement up</code> → <code>betBull</code> (same as tap UP)",
           "• <code>/placement down</code> → <code>betBear</code> (same as tap DOWN)",
           "",
-          "Needs <code>BSC_WALLET_PRIVATE_KEY</code> only — test stake is fixed at <b>0.003 BNB</b> (not <code>PANCAKE_PREDICTION_BET_BNB</code>).",
-          "Bets only on the <b>next</b> bettable <code>currentEpoch</code> (skips the epoch live at request — polls ~every 10s, max wait ~7 min).",
-          "Reply includes ✅ success or ❌ failure (same as after a pre-prediction tap).",
+          "Needs <code>BSC_WALLET_PRIVATE_KEY</code> only — test stake is fixed at <b>0.0015 BNB</b> (not <code>PANCAKE_PREDICTION_BET_BNB</code>).",
+          "Only bets if <code>currentEpoch</code> is <b>open for betting</b> right now. If locked, you get ❌ — we do <b>not</b> wait for the next round.",
+          "Reply: ✅ success or ❌ failure (same as after a pre-prediction tap).",
         ].join("\n"),
         { parse_mode: "HTML" },
       );
@@ -289,16 +436,7 @@ export async function startTelegramCommandListener(): Promise<void> {
     if (cid !== undefined) await ctx.telegram.sendChatAction(cid, "typing");
     const runBet = await runConfiguredPancakeBet(direction, {
       betWeiOverride: PLACEMENT_TEST_BET_WEI,
-      onWaitingForNextRound: async () => {
-        await ctx.reply(
-          [
-            "⏳ <b>/placement</b>",
-            "",
-            "<code>currentEpoch</code> at request is not used — waiting for the <b>next</b> round betting window (~10s between checks, max ~7 min).",
-          ].join("\n"),
-          { parse_mode: "HTML" },
-        );
-      },
+      placementContext: { kind: "manual_cmd" },
     });
     if (runBet.outcome === "not_configured") {
       await ctx.reply(
@@ -306,7 +444,7 @@ export async function startTelegramCommandListener(): Promise<void> {
           "⚠️ <b>Placement test</b>",
           "",
           "Set <code>BSC_WALLET_PRIVATE_KEY</code> in <code>.env</code>.",
-          "Stake for this command is always <b>0.003 BNB</b> — you do not need <code>PANCAKE_PREDICTION_BET_BNB</code>.",
+          "Stake for this command is always <b>0.0015 BNB</b> — you do not need <code>PANCAKE_PREDICTION_BET_BNB</code>.",
         ].join("\n"),
         { parse_mode: "HTML" },
       );
@@ -366,6 +504,53 @@ export async function startTelegramCommandListener(): Promise<void> {
     const data = "data" in cq ? cq.data : undefined;
     if (!data) return;
 
+    const claimMatch = /^pclaim:(\d+)$/.exec(data);
+    if (claimMatch) {
+      const chatId = String(ctx.chat?.id ?? "");
+      if (chatId !== config.telegramChatId) {
+        await ctx.answerCbQuery("Unauthorized");
+        return;
+      }
+      const epochStr = claimMatch[1]!;
+      const row = getPancakeBet(epochStr);
+      if (!row || row.phase !== "awaiting_claim") {
+        await ctx.answerCbQuery("Nothing to claim for this epoch");
+        return;
+      }
+      const pk = normalizeBscPrivateKey(config.bscWalletPrivateKey);
+      if (pk === null) {
+        await ctx.answerCbQuery("Wallet not configured");
+        return;
+      }
+      await ctx.answerCbQuery("Submitting claim…");
+      const res = await claimPancakePredictionEpochs({
+        rpcUrl: config.bscRpcUrl,
+        privateKey: pk,
+        epochs: [BigInt(epochStr)],
+      });
+      if (res.ok) {
+        const outcome = row.awaitingOutcome === "refund" ? "refund" : "won";
+        let claimWei = res.claimAmountWei;
+        if (claimWei === 0n && row.estimatedClaimWei) {
+          claimWei = BigInt(row.estimatedClaimWei);
+        }
+        await appendPancakePlacementSettlement({
+          row,
+          outcome,
+          claimWei,
+          claimTxHash: res.txHash,
+        });
+        removePancakeBet(epochStr);
+      }
+      await sendTelegramText(
+        formatPancakeClaimTelegramHtml(epochStr, res, {
+          placementId: row.placementId,
+        }),
+        { parseMode: "HTML" },
+      );
+      return;
+    }
+
     const pickMatch = /^pick:(\d+):([UD])$/.exec(data);
     if (pickMatch) {
       const chatId = String(ctx.chat?.id ?? "");
@@ -383,16 +568,7 @@ export async function startTelegramCommandListener(): Promise<void> {
       await ctx.answerCbQuery(`Recorded your pick: ${dir}`);
 
       const runBet = await runConfiguredPancakeBet(dir, {
-        onWaitingForNextRound: async () => {
-          await sendTelegramText(
-            [
-              "⏳ <b>Pancake bet</b>",
-              "",
-              "<code>currentEpoch</code> when you tapped is skipped — waiting for the <b>next</b> bettable round (~10s between checks, max ~7 min).",
-            ].join("\n"),
-            { parseMode: "HTML" },
-          );
-        },
+        placementContext: { kind: "signal_pick", fromOpenTime },
       });
       if (runBet.outcome === "not_configured") return;
       if (runBet.outcome === "dryrun") {
@@ -454,6 +630,7 @@ export async function startTelegramCommandListener(): Promise<void> {
   });
   await b.launch();
   commandListenerStarted = true;
+  startPancakeOutcomePoller(sendTelegramText);
 }
 
 export async function sendTelegramAlert(

@@ -100,7 +100,7 @@ Telegram command:
 - `/weeklyreport` - reply with last 7 days report (signals + predictions) for the configured chat
 - `/backtest` — replay the last **3** days of closed klines (ending now) through the same engine + dispatcher as live.
 - `/backtest 7` — last **7** days (max **90**). Binance returns max 1000 candles per request; the client paginates for longer ranges.
-- `/placement up` / `/placement down` — same next-epoch Pancake path as UP/DOWN tap; fixed **0.003 BNB** test stake (only needs wallet key in `.env`, not `PANCAKE_PREDICTION_BET_BNB`); ✅/❌ reply.
+- `/placement up` / `/placement down` — Pancake bet only if betting is open now; ❌ if locked (no wait); **0.0015 BNB**; wallet key only.
 
 ## Configuration
 

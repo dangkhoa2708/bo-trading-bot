@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { config } from "./config.js";
 import { signalChartLinks } from "./chart/externalLinks.js";
 import { subscribeKline } from "./binance/candleStream.js";
@@ -21,6 +22,7 @@ import {
   consumeHumanPickForBar,
   registerAwaitingHumanPick,
 } from "./prediction/humanPick.js";
+import { pullFakeSignalIfQueued } from "./prediction/injectedFakeSignal.js";
 import { logRuntime } from "./logging/runtime.js";
 import {
   sendSignalReminderPings,
@@ -37,6 +39,7 @@ async function main(): Promise<void> {
   let pendingPrediction:
     | {
         signalId: string;
+        predictionId: string;
         predicted: "UP" | "DOWN";
         fromOpenTime: number;
         fromSetup: string;
@@ -68,6 +71,19 @@ async function main(): Promise<void> {
   }
 
   const sub = subscribeKline(config.symbol, config.interval, async (c) => {
+    if (!pendingPrediction) {
+      const inj = pullFakeSignalIfQueued();
+      if (inj) {
+        pendingPrediction = {
+          signalId: inj.signalId,
+          predictionId: inj.predictionId,
+          predicted: inj.predicted,
+          fromOpenTime: inj.fromOpenTime,
+          fromSetup: inj.fromSetup,
+          baselineClose: inj.baselineClose,
+        };
+      }
+    }
     if (pendingPrediction) {
       const botExpected = pendingPrediction.predicted;
       const humanPick = consumeHumanPickForBar(
@@ -105,6 +121,7 @@ async function main(): Promise<void> {
       );
       appendPredictionLog({
         signalId: pendingPrediction.signalId,
+        predictionId: pendingPrediction.predictionId,
         ts: new Date().toISOString(),
         fromOpenTime: pendingPrediction.fromOpenTime,
         baselineClose: pendingPrediction.baselineClose,
@@ -134,70 +151,65 @@ async function main(): Promise<void> {
     // Temporarily disable Telegram spam for candle-by-candle logs.
     await logRuntime(formatVerifyLog(c, result), "log");
 
-    if (!decision.emit) {
-      if (result.signal !== "NONE") {
-        await logRuntime(
-          `[skip] ${new Date(c.openTime).toISOString()} ${result.signal} — ${decision.reason}`,
-        );
-      }
-      return;
+    if (decision.emit && result.signal !== "NONE") {
+      const predictionId = randomUUID();
+      const signalId = `${c.openTime}-${result.signal}-${result.setup}`;
+      const charts = signalChartLinks(config.symbol, config.interval);
+      const pancakeCd = await fetchPancakePredictionBnbCountdown(config.bscRpcUrl);
+      await logRuntime(
+        `[signal] id=${signalId} ${new Date(c.openTime).toISOString()} ${result.signal} ${result.setup} — ${result.reason}`,
+        "log",
+        {
+          text: formatSignalTelegramLog(config.symbol, c, result, signalId, {
+            extraHtmlBeforeChart: formatPancakeCountdownSignalSnippetHtml(pancakeCd),
+          }),
+          parseMode: "HTML",
+          replyMarkup: charts.replyMarkup,
+        },
+      );
+      pendingPrediction = {
+        signalId,
+        predictionId,
+        predicted: result.signal,
+        fromOpenTime: c.openTime,
+        fromSetup: result.setup,
+        baselineClose: c.close,
+      };
+      registerAwaitingHumanPick(c.openTime, { signalId, predictionId });
+      await logRuntime(
+        `[pre-prediction] id=${signalId} from=${new Date(c.openTime).toISOString()} predict_next=${result.signal} setup=${result.setup} reason=${result.reason}`,
+        "log",
+        {
+          text: formatPrePredictionTelegramLog({
+            pair: config.symbol,
+            signalId,
+            fromOpenTime: c.openTime,
+            baselineClose: c.close,
+            predicted: result.signal,
+            setup: result.setup,
+            reason: result.reason,
+          }),
+          parseMode: "HTML",
+          replyMarkup: prePredictionReplyMarkup(c.openTime),
+        },
+      );
+      await sendSignalReminderPings();
+
+      appendSignalLog({
+        signalId,
+        predictionId,
+        ts: new Date().toISOString(),
+        openTime: c.openTime,
+        price: c.close,
+        signal: result.signal,
+        setup: result.setup,
+        reason: result.reason,
+      });
+    } else if (!decision.emit && result.signal !== "NONE") {
+      await logRuntime(
+        `[skip] ${new Date(c.openTime).toISOString()} ${result.signal} — ${decision.reason}`,
+      );
     }
-    if (result.signal === "NONE") {
-      return;
-    }
-
-    const signalId = `${c.openTime}-${result.signal}-${result.setup}`;
-    const charts = signalChartLinks(config.symbol, config.interval);
-    const pancakeCd = await fetchPancakePredictionBnbCountdown(config.bscRpcUrl);
-    await logRuntime(
-      `[signal] id=${signalId} ${new Date(c.openTime).toISOString()} ${result.signal} ${result.setup} — ${result.reason}`,
-      "log",
-      {
-        text: formatSignalTelegramLog(config.symbol, c, result, signalId, {
-          extraHtmlBeforeChart: formatPancakeCountdownSignalSnippetHtml(pancakeCd),
-        }),
-        parseMode: "HTML",
-        replyMarkup: charts.replyMarkup,
-      },
-    );
-    pendingPrediction = {
-      signalId,
-      predicted: result.signal,
-      fromOpenTime: c.openTime,
-      fromSetup: result.setup,
-      baselineClose: c.close,
-    };
-    registerAwaitingHumanPick(c.openTime);
-    await logRuntime(
-      `[pre-prediction] id=${signalId} from=${new Date(c.openTime).toISOString()} predict_next=${result.signal} setup=${result.setup} reason=${result.reason}`,
-      "log",
-      {
-        text: formatPrePredictionTelegramLog({
-          pair: config.symbol,
-          signalId,
-          fromOpenTime: c.openTime,
-          baselineClose: c.close,
-          predicted: result.signal,
-          setup: result.setup,
-          reason: result.reason,
-        }),
-        parseMode: "HTML",
-        replyMarkup: prePredictionReplyMarkup(c.openTime),
-      },
-    );
-    await sendSignalReminderPings();
-
-    appendSignalLog({
-      signalId,
-      ts: new Date().toISOString(),
-      openTime: c.openTime,
-      price: c.close,
-      signal: result.signal,
-      setup: result.setup,
-      reason: result.reason,
-    });
-
-    // signal has already been sent through common runtime logger.
   });
 
   const shutdown = () => {

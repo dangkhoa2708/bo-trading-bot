@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { formatEther } from "viem";
 import { fmtGmt7, gmt7DateKey } from "../time/utils.js";
 import {
   buildDualPredictionStats,
@@ -7,9 +8,19 @@ import {
   scoreRowVsMyPick,
   type DualPredictionSection,
 } from "./predictionStats.js";
+import {
+  buildPancakePlacementsDetailsHtml,
+  buildPancakePlacementsSummaryHtmlLines,
+  filterPlacementsForSignalDetail,
+  formatLinkedPlacementsDetailHtml,
+  loadPancakePlacementsForGmt7Day,
+  type PancakePlacementAggregate,
+} from "./pancakePlacementReport.js";
+import { escapeHtml } from "../logging/verify.js";
 
 type SignalRow = {
   signalId?: string;
+  predictionId?: string;
   ts: string;
   openTime: number;
   price: number;
@@ -20,6 +31,7 @@ type SignalRow = {
 
 type PredictionRow = {
   signalId?: string;
+  predictionId?: string;
   ts: string;
   fromOpenTime: number;
   baselineClose: number;
@@ -35,6 +47,8 @@ type PredictionRow = {
 type DetailItem = {
   index: number;
   signalId: string;
+  /** Shared id across <code>signals.jsonl</code> and <code>predictions.jsonl</code> when present. */
+  predictionId?: string;
   time: string;
   openTime: string;
   close: number;
@@ -48,6 +62,10 @@ type DetailItem = {
   resultVsMyPick: string;
   baselineClose: number | null;
   nextClose: number | null;
+  /** HTML lines for Pancake placements linked to this signal / prediction. */
+  linkedPancakeHtml: string;
+  /** Plain text (CLI) for linked placements. */
+  linkedPancakeText: string;
 };
 
 type DailyReportData = {
@@ -62,6 +80,8 @@ type DailyReportData = {
   /** Next-candle scores vs your Telegram pick (recorded picks only). */
   myPicks: DualPredictionSection;
   details: DetailItem[];
+  /** Settled Pancake on-chain placements (GMT+7 day). */
+  pancake: PancakePlacementAggregate;
 };
 
 function safeParse<T>(line: string): T | null {
@@ -97,6 +117,7 @@ function buildDailyReportData(): DailyReportData {
   const signalFile = path.join(process.cwd(), "logs", "signals.jsonl");
   const predictionFile = path.join(process.cwd(), "logs", "predictions.jsonl");
   const today = todayKeyGmt7();
+  const pancake = loadPancakePlacementsForGmt7Day(today);
   const emptySection = (): DualPredictionSection => ({
     total: 0,
     right: 0,
@@ -110,7 +131,9 @@ function buildDailyReportData(): DailyReportData {
     },
   });
 
-  if (!fs.existsSync(signalFile) && !fs.existsSync(predictionFile)) {
+  const signalExists = fs.existsSync(signalFile);
+  const predExists = fs.existsSync(predictionFile);
+  if (!signalExists && !predExists && pancake.count === 0) {
     return {
       hasLogs: false,
       date: today,
@@ -121,11 +144,16 @@ function buildDailyReportData(): DailyReportData {
       botPrediction: emptySection(),
       myPicks: emptySection(),
       details: [],
+      pancake,
     };
   }
 
-  const todaySignals = parseTodayRows<SignalRow>(signalFile, today);
-  const todayPredictions = parseTodayRows<PredictionRow>(predictionFile, today);
+  const todaySignals = signalExists
+    ? parseTodayRows<SignalRow>(signalFile, today)
+    : [];
+  const todayPredictions = predExists
+    ? parseTodayRows<PredictionRow>(predictionFile, today)
+    : [];
 
   const up = todaySignals.filter((r) => r.signal === "UP").length;
   const down = todaySignals.filter((r) => r.signal === "DOWN").length;
@@ -162,9 +190,25 @@ function buildDailyReportData(): DailyReportData {
   const details: DetailItem[] = todaySignals.map((s, idx) => {
     const sid = s.signalId ?? `${s.openTime}-${s.signal}-${s.setup}`;
     const p = predBySignalId.get(sid) ?? predByFromOpen.get(s.openTime);
+    const predictionId = p?.predictionId ?? s.predictionId;
+    const linkedPlacements = filterPlacementsForSignalDetail(pancake.rows, {
+      signalId: sid,
+      predictionId,
+    });
+    const linkedPancakeHtml = formatLinkedPlacementsDetailHtml(linkedPlacements);
+    const linkedPancakeText =
+      linkedPlacements.length === 0
+        ? ""
+        : linkedPlacements
+            .map(
+              (pl) =>
+                `  • Pancake ${pl.placementId.slice(0, 8)}… ${pl.outcome} · P&L ${pl.profitBnb} BNB`,
+            )
+            .join("\n");
     return {
       index: idx + 1,
       signalId: sid,
+      predictionId,
       time: fmtGmt7(Date.parse(s.ts)),
       openTime: fmtGmt7(s.openTime),
       close: s.price,
@@ -187,11 +231,18 @@ function buildDailyReportData(): DailyReportData {
       resultVsMyPick: p ? (scoreRowVsMyPick(p) ?? "—") : "PENDING",
       baselineClose: p ? p.baselineClose : null,
       nextClose: p ? p.nextClose : null,
+      linkedPancakeHtml,
+      linkedPancakeText,
     };
   });
 
+  const hasLogs =
+    todaySignals.length > 0 ||
+    todayPredictions.length > 0 ||
+    pancake.count > 0;
+
   return {
-    hasLogs: true,
+    hasLogs,
     date: today,
     signalTotal: todaySignals.length,
     up,
@@ -200,6 +251,7 @@ function buildDailyReportData(): DailyReportData {
     botPrediction: dual.bot,
     myPicks: dual.myPicks,
     details,
+    pancake,
   };
 }
 
@@ -230,6 +282,13 @@ export function buildDailyReportLines(): string[] {
         }`,
       );
       detailLines.push(`  Reason      : ${item.reason}`);
+      if (item.predictionId) {
+        detailLines.push(`  PredictionId: ${item.predictionId}`);
+      }
+      if (item.linkedPancakeText) {
+        detailLines.push("  On-chain (Pancake):");
+        detailLines.push(item.linkedPancakeText);
+      }
     }
   }
 
@@ -269,6 +328,16 @@ export function buildDailyReportLines(): string[] {
     d.myPicks.bySetup.Other.total > 0
       ? `  Other      : ${d.myPicks.bySetup.Other.total} (✅ ${d.myPicks.bySetup.Other.right} / ❌ ${d.myPicks.bySetup.Other.wrong}) ${d.myPicks.bySetup.Other.winRatePct.toFixed(1)}%`
       : "  Other      : 0",
+    ...(d.pancake.count > 0
+      ? [
+          "",
+          "Pancake placements (settled)",
+          `  Count     : ${d.pancake.count}`,
+          `  Stake BNB : ${formatEther(d.pancake.totalBetWei)}  (USDT ≈ at settle: ${d.pancake.sumStakeUsdt === null ? "—" : d.pancake.sumStakeUsdt.toFixed(2)})`,
+          `  Claim BNB : ${formatEther(d.pancake.totalClaimWei)}  (USDT ≈ at settle: ${d.pancake.sumClaimUsdt === null ? "—" : d.pancake.sumClaimUsdt.toFixed(2)})`,
+          `  P&L BNB   : ${formatEther(d.pancake.totalProfitWei)}  (USDT ≈ at settle: ${d.pancake.sumProfitUsdt === null ? "—" : d.pancake.sumProfitUsdt.toFixed(2)})`,
+        ]
+      : []),
     ...detailLines,
     "======================================================",
   ];
@@ -282,10 +351,10 @@ export function buildDailyReportSummaryHtml(): string {
   }
 
   const header = buildDailyReportHeaderLinesHtml(d);
-  if (d.details.length > 0) {
+  if (d.details.length > 0 || d.pancake.count > 0) {
     header.push(
       "",
-      `• <i>${d.details.length} per-signal row(s) — tap <b>Show details</b> below.</i>`,
+      `• <i>${d.details.length} per-signal row(s), ${d.pancake.count} Pancake placement(s) — tap <b>Show details</b> for breakdown.</i>`,
     );
   }
   return header.filter(Boolean).join("\n");
@@ -295,7 +364,7 @@ function buildDailyReportHeaderLinesHtml(d: DailyReportData): string[] {
   const bot = d.botPrediction;
   const my = d.myPicks;
   const mb = my.total > 0 ? my.winRatePct.toFixed(1) : "—";
-  return [
+  const base = [
     "📊 <b>Daily Report</b> <i>(GMT+7)</i>",
     `🗓️ Date: <code>${d.date}</code>`,
     "",
@@ -332,36 +401,51 @@ function buildDailyReportHeaderLinesHtml(d: DailyReportData): string[] {
       ? `• Other: <code>${my.bySetup.Other.total}</code> (✅ <code>${my.bySetup.Other.right}</code> / ❌ <code>${my.bySetup.Other.wrong}</code>) — <code>${my.bySetup.Other.winRatePct.toFixed(1)}%</code>`
       : "",
   ].filter((line) => line !== "");
+  return [...base, ...buildPancakePlacementsSummaryHtmlLines(d.pancake)];
 }
 
 const TELEGRAM_DETAILS_MAX_CHARS = 3600;
 
 function buildDailyReportDetailsHtmlForData(d: DailyReportData): string {
-  if (!d.hasLogs || d.details.length === 0) return "";
-
-  const detailText: string[] = ["", "🧾 <b>Details</b>"];
-  for (const item of d.details) {
-    detailText.push(
-      `<b>Signal ${item.index}</b>`,
-      `• SignalId: <code>${item.signalId}</code>`,
-      `• Time: <code>${item.time}</code>`,
-      `• OpenTime: <code>${item.openTime}</code>`,
-      `• Close: <code>${item.close.toFixed(2)}</code>`,
-      `• Signal: <code>${item.signal} (${item.setup})</code>`,
-      `• Prediction: <code>${item.prediction}</code>`,
-      `• Result (logged): <b>${item.result}</b>`,
-      `• vs bot: <b>${item.resultVsBot}</b>`,
-      `• vs my pick: <b>${item.resultVsMyPick}</b>`,
-      `• Baseline/Next: <code>${
-        item.baselineClose !== null && item.nextClose !== null
-          ? `${item.baselineClose.toFixed(2)} -> ${item.nextClose.toFixed(2)}`
-          : "PENDING"
-      }</code>`,
-      `• Reason: <i>${item.reason}</i>`,
-      "",
-    );
+  if (!d.hasLogs) return "";
+  const parts: string[] = [];
+  if (d.details.length > 0) {
+    parts.push("", "🧾 <b>Details</b>");
+    for (const item of d.details) {
+      parts.push(
+        `<b>Signal ${item.index}</b>`,
+        `• SignalId: <code>${item.signalId}</code>`,
+        `• Time: <code>${item.time}</code>`,
+        `• OpenTime: <code>${item.openTime}</code>`,
+        `• Close: <code>${item.close.toFixed(2)}</code>`,
+        `• Signal: <code>${item.signal} (${item.setup})</code>`,
+        `• Prediction: <code>${item.prediction}</code>`,
+        `• Result (logged): <b>${item.result}</b>`,
+        `• vs bot: <b>${item.resultVsBot}</b>`,
+        `• vs my pick: <b>${item.resultVsMyPick}</b>`,
+        `• Baseline/Next: <code>${
+          item.baselineClose !== null && item.nextClose !== null
+            ? `${item.baselineClose.toFixed(2)} -> ${item.nextClose.toFixed(2)}`
+            : "PENDING"
+        }</code>`,
+        `• Reason: <i>${item.reason}</i>`,
+        ...(item.predictionId
+          ? [`• predictionId: <code>${escapeHtml(item.predictionId)}</code>`]
+          : []),
+        ...(item.linkedPancakeHtml
+          ? [
+              "• <b>On-chain (Pancake)</b>",
+              item.linkedPancakeHtml,
+            ]
+          : []),
+        "",
+      );
+    }
   }
-  let out = detailText.join("\n");
+  const pancakeBlock = buildPancakePlacementsDetailsHtml(d.pancake);
+  if (pancakeBlock) parts.push(pancakeBlock);
+  let out = parts.join("\n");
+  if (!out.trim()) return "";
   if (out.length > TELEGRAM_DETAILS_MAX_CHARS) {
     out =
       out.slice(0, TELEGRAM_DETAILS_MAX_CHARS) +

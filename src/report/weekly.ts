@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { formatEther } from "viem";
 import { fmtGmt7 } from "../time/utils.js";
 import {
   buildDualPredictionStats,
@@ -7,9 +8,19 @@ import {
   scoreRowVsMyPick,
   type DualPredictionSection,
 } from "./predictionStats.js";
+import {
+  buildPancakePlacementsDetailsHtml,
+  buildPancakePlacementsSummaryHtmlLines,
+  filterPlacementsForSignalDetail,
+  formatLinkedPlacementsDetailHtml,
+  loadPancakePlacementsSince,
+  type PancakePlacementAggregate,
+} from "./pancakePlacementReport.js";
+import { escapeHtml } from "../logging/verify.js";
 
 type SignalRow = {
   signalId?: string;
+  predictionId?: string;
   ts: string;
   openTime: number;
   price: number;
@@ -20,6 +31,7 @@ type SignalRow = {
 
 type PredictionRow = {
   signalId?: string;
+  predictionId?: string;
   ts: string;
   fromOpenTime: number;
   baselineClose: number;
@@ -35,6 +47,7 @@ type PredictionRow = {
 type DetailItem = {
   index: number;
   signalId: string;
+  predictionId?: string;
   time: string;
   openTime: string;
   close: number;
@@ -47,6 +60,8 @@ type DetailItem = {
   resultVsMyPick: string;
   baselineClose: number | null;
   nextClose: number | null;
+  linkedPancakeHtml: string;
+  linkedPancakeText: string;
 };
 
 type WeeklyReportData = {
@@ -59,6 +74,7 @@ type WeeklyReportData = {
   botPrediction: DualPredictionSection;
   myPicks: DualPredictionSection;
   details: DetailItem[];
+  pancake: PancakePlacementAggregate;
 };
 
 function safeParse<T>(line: string): T | null {
@@ -88,6 +104,7 @@ function buildWeeklyReportData(): WeeklyReportData {
   const now = Date.now();
   const sinceMs = now - 7 * 24 * 60 * 60 * 1000;
   const windowLabel = `${fmtGmt7(sinceMs)} -> ${fmtGmt7(now)}`;
+  const pancake = loadPancakePlacementsSince(sinceMs);
 
   const emptySection = (): DualPredictionSection => ({
     total: 0,
@@ -102,7 +119,9 @@ function buildWeeklyReportData(): WeeklyReportData {
     },
   });
 
-  if (!fs.existsSync(signalFile) && !fs.existsSync(predictionFile)) {
+  const signalExists = fs.existsSync(signalFile);
+  const predExists = fs.existsSync(predictionFile);
+  if (!signalExists && !predExists && pancake.count === 0) {
     return {
       hasLogs: false,
       windowLabel,
@@ -113,11 +132,16 @@ function buildWeeklyReportData(): WeeklyReportData {
       botPrediction: emptySection(),
       myPicks: emptySection(),
       details: [],
+      pancake,
     };
   }
 
-  const signals = parseRecentRows<SignalRow>(signalFile, sinceMs);
-  const predictions = parseRecentRows<PredictionRow>(predictionFile, sinceMs);
+  const signals = signalExists
+    ? parseRecentRows<SignalRow>(signalFile, sinceMs)
+    : [];
+  const predictions = predExists
+    ? parseRecentRows<PredictionRow>(predictionFile, sinceMs)
+    : [];
 
   const up = signals.filter((r) => r.signal === "UP").length;
   const down = signals.filter((r) => r.signal === "DOWN").length;
@@ -152,9 +176,25 @@ function buildWeeklyReportData(): WeeklyReportData {
   const details: DetailItem[] = signals.map((s, idx) => {
     const sid = s.signalId ?? `${s.openTime}-${s.signal}-${s.setup}`;
     const p = predBySignalId.get(sid) ?? predByFromOpen.get(s.openTime);
+    const predictionId = p?.predictionId ?? s.predictionId;
+    const linkedPlacements = filterPlacementsForSignalDetail(pancake.rows, {
+      signalId: sid,
+      predictionId,
+    });
+    const linkedPancakeHtml = formatLinkedPlacementsDetailHtml(linkedPlacements);
+    const linkedPancakeText =
+      linkedPlacements.length === 0
+        ? ""
+        : linkedPlacements
+            .map(
+              (pl) =>
+                `  • Pancake ${pl.placementId.slice(0, 8)}… ${pl.outcome} · P&L ${pl.profitBnb} BNB`,
+            )
+            .join("\n");
     return {
       index: idx + 1,
       signalId: sid,
+      predictionId,
       time: fmtGmt7(Date.parse(s.ts)),
       openTime: fmtGmt7(s.openTime),
       close: s.price,
@@ -177,11 +217,16 @@ function buildWeeklyReportData(): WeeklyReportData {
       resultVsMyPick: p ? (scoreRowVsMyPick(p) ?? "—") : "PENDING",
       baselineClose: p ? p.baselineClose : null,
       nextClose: p ? p.nextClose : null,
+      linkedPancakeHtml,
+      linkedPancakeText,
     };
   });
 
+  const hasLogs =
+    signals.length > 0 || predictions.length > 0 || pancake.count > 0;
+
   return {
-    hasLogs: true,
+    hasLogs,
     windowLabel,
     signalTotal: signals.length,
     up,
@@ -190,6 +235,7 @@ function buildWeeklyReportData(): WeeklyReportData {
     botPrediction: dual.bot,
     myPicks: dual.myPicks,
     details,
+    pancake,
   };
 }
 
@@ -220,6 +266,13 @@ export function buildWeeklyReportLines(): string[] {
         }`,
       );
       detailLines.push(`  Reason      : ${item.reason}`);
+      if (item.predictionId) {
+        detailLines.push(`  PredictionId: ${item.predictionId}`);
+      }
+      if (item.linkedPancakeText) {
+        detailLines.push("  On-chain (Pancake):");
+        detailLines.push(item.linkedPancakeText);
+      }
     }
   }
 
@@ -259,6 +312,16 @@ export function buildWeeklyReportLines(): string[] {
     d.myPicks.bySetup.Other.total > 0
       ? `  Other      : ${d.myPicks.bySetup.Other.total} (✅ ${d.myPicks.bySetup.Other.right} / ❌ ${d.myPicks.bySetup.Other.wrong}) ${d.myPicks.bySetup.Other.winRatePct.toFixed(1)}%`
       : "  Other      : 0",
+    ...(d.pancake.count > 0
+      ? [
+          "",
+          "Pancake placements (settled)",
+          `  Count     : ${d.pancake.count}`,
+          `  Stake BNB : ${formatEther(d.pancake.totalBetWei)}  (USDT ≈ at settle: ${d.pancake.sumStakeUsdt === null ? "—" : d.pancake.sumStakeUsdt.toFixed(2)})`,
+          `  Claim BNB : ${formatEther(d.pancake.totalClaimWei)}  (USDT ≈ at settle: ${d.pancake.sumClaimUsdt === null ? "—" : d.pancake.sumClaimUsdt.toFixed(2)})`,
+          `  P&L BNB   : ${formatEther(d.pancake.totalProfitWei)}  (USDT ≈ at settle: ${d.pancake.sumProfitUsdt === null ? "—" : d.pancake.sumProfitUsdt.toFixed(2)})`,
+        ]
+      : []),
     ...detailLines,
     "======================================================",
   ];
@@ -274,10 +337,10 @@ export function buildWeeklyReportSummaryHtml(): string {
   }
 
   const header = buildWeeklyReportHeaderLinesHtml(d);
-  if (d.details.length > 0) {
+  if (d.details.length > 0 || d.pancake.count > 0) {
     header.push(
       "",
-      `• <i>${d.details.length} per-signal row(s) — tap <b>Show details</b> below.</i>`,
+      `• <i>${d.details.length} per-signal row(s), ${d.pancake.count} Pancake placement(s) — tap <b>Show details</b> for breakdown.</i>`,
     );
   }
   return header.filter(Boolean).join("\n");
@@ -287,7 +350,7 @@ function buildWeeklyReportHeaderLinesHtml(d: WeeklyReportData): string[] {
   const bot = d.botPrediction;
   const my = d.myPicks;
   const mb = my.total > 0 ? my.winRatePct.toFixed(1) : "—";
-  return [
+  const base = [
     "📈 <b>Weekly Report</b> <i>(GMT+7)</i>",
     `🗓️ Window: <code>${d.windowLabel}</code>`,
     "",
@@ -324,34 +387,50 @@ function buildWeeklyReportHeaderLinesHtml(d: WeeklyReportData): string[] {
       ? `• Other: <code>${my.bySetup.Other.total}</code> (✅ <code>${my.bySetup.Other.right}</code> / ❌ <code>${my.bySetup.Other.wrong}</code>) — <code>${my.bySetup.Other.winRatePct.toFixed(1)}%</code>`
       : "",
   ].filter((line) => line !== "");
+  return [...base, ...buildPancakePlacementsSummaryHtmlLines(d.pancake)];
 }
 
 function buildWeeklyReportDetailsHtmlForData(d: WeeklyReportData): string {
-  if (!d.hasLogs || d.details.length === 0) return "";
+  if (!d.hasLogs) return "";
 
-  const detailText: string[] = ["", "🧾 <b>Details</b>"];
-  for (const item of d.details) {
-    detailText.push(
-      `<b>Signal ${item.index}</b>`,
-      `• SignalId: <code>${item.signalId}</code>`,
-      `• Time: <code>${item.time}</code>`,
-      `• OpenTime: <code>${item.openTime}</code>`,
-      `• Close: <code>${item.close.toFixed(2)}</code>`,
-      `• Signal: <code>${item.signal} (${item.setup})</code>`,
-      `• Prediction: <code>${item.prediction}</code>`,
-      `• Result (logged): <b>${item.result}</b>`,
-      `• vs bot: <b>${item.resultVsBot}</b>`,
-      `• vs my pick: <b>${item.resultVsMyPick}</b>`,
-      `• Baseline/Next: <code>${
-        item.baselineClose !== null && item.nextClose !== null
-          ? `${item.baselineClose.toFixed(2)} -> ${item.nextClose.toFixed(2)}`
-          : "PENDING"
-      }</code>`,
-      `• Reason: <i>${item.reason}</i>`,
-      "",
-    );
+  const parts: string[] = [];
+  if (d.details.length > 0) {
+    parts.push("", "🧾 <b>Details</b>");
+    for (const item of d.details) {
+      parts.push(
+        `<b>Signal ${item.index}</b>`,
+        `• SignalId: <code>${item.signalId}</code>`,
+        `• Time: <code>${item.time}</code>`,
+        `• OpenTime: <code>${item.openTime}</code>`,
+        `• Close: <code>${item.close.toFixed(2)}</code>`,
+        `• Signal: <code>${item.signal} (${item.setup})</code>`,
+        `• Prediction: <code>${item.prediction}</code>`,
+        `• Result (logged): <b>${item.result}</b>`,
+        `• vs bot: <b>${item.resultVsBot}</b>`,
+        `• vs my pick: <b>${item.resultVsMyPick}</b>`,
+        `• Baseline/Next: <code>${
+          item.baselineClose !== null && item.nextClose !== null
+            ? `${item.baselineClose.toFixed(2)} -> ${item.nextClose.toFixed(2)}`
+            : "PENDING"
+        }</code>`,
+        `• Reason: <i>${item.reason}</i>`,
+        ...(item.predictionId
+          ? [`• predictionId: <code>${escapeHtml(item.predictionId)}</code>`]
+          : []),
+        ...(item.linkedPancakeHtml
+          ? [
+              "• <b>On-chain (Pancake)</b>",
+              item.linkedPancakeHtml,
+            ]
+          : []),
+        "",
+      );
+    }
   }
-  let out = detailText.join("\n");
+  const pancakeBlock = buildPancakePlacementsDetailsHtml(d.pancake);
+  if (pancakeBlock) parts.push(pancakeBlock);
+  let out = parts.join("\n");
+  if (!out.trim()) return "";
   if (out.length > TELEGRAM_DETAILS_MAX_CHARS) {
     out =
       out.slice(0, TELEGRAM_DETAILS_MAX_CHARS) +

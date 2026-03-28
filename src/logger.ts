@@ -5,6 +5,8 @@ const logDir = path.join(process.cwd(), "logs");
 
 export type LogRow = {
   signalId: string;
+  /** UUID shared with the matching row in <code>predictions.jsonl</code> when it resolves. */
+  predictionId: string;
   ts: string;
   openTime: number;
   price: number;
@@ -15,6 +17,8 @@ export type LogRow = {
 
 export type PredictionLogRow = {
   signalId: string;
+  /** Same UUID as emitted on the sibling line in <code>signals.jsonl</code>. */
+  predictionId: string;
   ts: string;
   fromOpenTime: number;
   baselineClose: number;
