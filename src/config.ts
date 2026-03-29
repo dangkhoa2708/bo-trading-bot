@@ -71,6 +71,12 @@ export type BotConfig = {
    */
   relaxedSignalFilters: boolean;
 
+  /**
+   * When false, Mirror uses SignalDispatcher same-direction dedupe (no back-to-back Mirror UP/DOWN).
+   * When true, consecutive Mirror alerts may repeat direction — useful for manual review; noisier.
+   */
+  mirrorAllowRepeatSameDirection: boolean;
+
   /** BSC JSON-RPC for PancakeSwap Prediction countdown (`/livecountdown`). */
   bscRpcUrl: string;
 
@@ -128,11 +134,11 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   // Narrower “sideways” band vs EMA → fewer sideways skips.
   sidewaysEmaPct: 0.0007,
 
-  // Mirror UP: allow bounce setups slightly further below EMA; less dump veto.
-  mirrorMaxBelowEmaPct: 0.01,
-  mirrorDumpAtrMult: 4.5,
+  // Mirror UP: looser V-bounce (large flush no longer vetoes R,R,G as often).
+  mirrorMaxBelowEmaPct: 0.018,
+  mirrorDumpAtrMult: 6.5,
   mirrorDumpLookback: 2,
-  mirrorWeakRedBodyRangePct: 0.62,
+  mirrorWeakRedBodyRangePct: 0.68,
   mirrorDownLightReconfirm: true,
 
   momentumMicroPauseBodyAtrMult: 0.35,
@@ -156,6 +162,9 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
 
   /** Set `true` here for looser signals (manual review); see JSDoc on `BotConfig.relaxedSignalFilters`. */
   relaxedSignalFilters: false,
+
+  /** Allow back-to-back Mirror UP/DOWN Telegram alerts (manual review; more alerts). */
+  mirrorAllowRepeatSameDirection: true,
 
   bscRpcUrl: "https://bsc-dataseed.binance.org",
 

@@ -402,7 +402,7 @@ function buildWeeklyReportHeaderLinesHtml(d: WeeklyReportData): string[] {
     `• Ignored <i>(no on-chain bet)</i>: <code>${d.ignoredNoBetCount}</code>`,
     `• With Pancake bet <i>(outcome on-chain)</i>: <code>${d.placementResolvedCount}</code>`,
     "",
-    "🤖 <b>Bot prediction</b> <i>(candle score — legacy rows only)</i>",
+    "🤖 <b>Bot prediction</b> <i>(next candle vs bot direction)</i>",
     `• Total: <code>${bot.total}</code>`,
     `• ✅ Right: <code>${bot.right}</code>`,
     `• ❌ Wrong: <code>${bot.wrong}</code>`,
@@ -416,7 +416,7 @@ function buildWeeklyReportHeaderLinesHtml(d: WeeklyReportData): string[] {
       ? `• Other: <code>${bot.bySetup.Other.total}</code> (✅ <code>${bot.bySetup.Other.right}</code> / ❌ <code>${bot.bySetup.Other.wrong}</code>) — <code>${bot.bySetup.Other.winRatePct.toFixed(1)}%</code>`
       : "",
     "",
-    "🧑‍💻 <b>My picks</b> <i>(Telegram buttons · candle score, legacy rows only)</i>",
+    "🧑‍💻 <b>My picks</b> <i>(Telegram pick vs next close, when recorded)</i>",
     `• Total: <code>${my.total}</code>`,
     `• ✅ Right: <code>${my.right}</code>`,
     `• ❌ Wrong: <code>${my.wrong}</code>`,

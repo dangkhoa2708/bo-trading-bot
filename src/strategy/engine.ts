@@ -399,7 +399,11 @@ function mirrorWeakRedStrongGreen(
 
   // Guard 2: avoid Mirror UP right after a big red "dump" candle (vs ATR).
   const atr = atrLast(candles, config.atrPeriod);
-  if (atr !== null && atr > 0) {
+  if (
+    !config.relaxedSignalFilters &&
+    atr !== null &&
+    atr > 0
+  ) {
     const lookback = Math.max(0, config.mirrorDumpLookback);
     const excludeLast3Start = Math.max(0, candles.length - 3 - lookback);
     const tail = candles.slice(excludeLast3Start, candles.length - 3);

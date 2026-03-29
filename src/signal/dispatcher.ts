@@ -1,10 +1,13 @@
+import { config } from "../config.js";
 import type { StrategyResult } from "../types.js";
 
 export type DispatchDecision = { emit: boolean; reason?: string };
 
-/** Momentum / Exhaustion: emit every engine fire (still one alert per candle). Mirror: full dedupe (same-dir skip). */
+/** Momentum / Exhaustion: emit every engine fire (still one alert per candle). Mirror: dedupe unless disabled in config. */
 export function usesStrictDirectionDedupe(setup: string): boolean {
-  return setup !== "Momentum" && setup !== "Exhaustion";
+  if (setup === "Momentum" || setup === "Exhaustion") return false;
+  if (setup === "Mirror" && config.mirrorAllowRepeatSameDirection) return false;
+  return true;
 }
 
 /**

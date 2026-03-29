@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { config } from "../src/config.js";
 import {
   SignalDispatcher,
   usesStrictDirectionDedupe,
@@ -33,8 +34,10 @@ const downMir: StrategyResult = {
 const none: StrategyResult = { signal: "NONE", setup: "None", reason: "none" };
 
 describe("usesStrictDirectionDedupe", () => {
-  it("is strict only for Mirror (and non Momentum/Exhaustion)", () => {
-    expect(usesStrictDirectionDedupe("Mirror")).toBe(true);
+  it("is strict for Mirror only when mirrorAllowRepeatSameDirection is false", () => {
+    expect(usesStrictDirectionDedupe("Mirror")).toBe(
+      !config.mirrorAllowRepeatSameDirection,
+    );
     expect(usesStrictDirectionDedupe("None")).toBe(true);
     expect(usesStrictDirectionDedupe("Momentum")).toBe(false);
     expect(usesStrictDirectionDedupe("Exhaustion")).toBe(false);
@@ -69,20 +72,28 @@ describe("SignalDispatcher", () => {
     expect(d.shouldEmit(200, upEx).emit).toBe(true);
   });
 
-  it("blocks Mirror same direction back-to-back", () => {
+  it("Mirror same direction back-to-back follows mirrorAllowRepeatSameDirection", () => {
     const d = new SignalDispatcher();
     expect(d.shouldEmit(100, upMir).emit).toBe(true);
     const r = d.shouldEmit(200, upMir);
-    expect(r.emit).toBe(false);
-    expect(r.reason).toBe("same direction as previous alert");
+    if (config.mirrorAllowRepeatSameDirection) {
+      expect(r.emit).toBe(true);
+    } else {
+      expect(r.emit).toBe(false);
+      expect(r.reason).toBe("same direction as previous alert");
+    }
   });
 
-  it("blocks Mirror when previous emit was same-dir Momentum", () => {
+  it("Mirror after same-dir Momentum follows mirrorAllowRepeatSameDirection", () => {
     const d = new SignalDispatcher();
     expect(d.shouldEmit(100, upMom).emit).toBe(true);
     const r = d.shouldEmit(200, upMir);
-    expect(r.emit).toBe(false);
-    expect(r.reason).toBe("same direction as previous alert");
+    if (config.mirrorAllowRepeatSameDirection) {
+      expect(r.emit).toBe(true);
+    } else {
+      expect(r.emit).toBe(false);
+      expect(r.reason).toBe("same direction as previous alert");
+    }
   });
 
   it("allows Momentum after same-dir Mirror (loose bypass)", () => {

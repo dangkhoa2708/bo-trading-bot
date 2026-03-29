@@ -34,7 +34,7 @@ describe("buildDualPredictionStats", () => {
     expect(d.myPicks.wrong).toBe(1);
   });
 
-  it("excludes IGNORED and PLACEMENT rows from candle stats", () => {
+  it("counts IGNORED and PLACEMENT toward candle stats (next close vs bot / pick)", () => {
     const rows = [
       {
         fromOpenTime: 1,
@@ -65,14 +65,16 @@ describe("buildDualPredictionStats", () => {
       },
     ];
     const d = buildDualPredictionStats(rows, (p) => p.setup ?? "Other");
-    expect(d.bot.total).toBe(1);
+    expect(d.bot.total).toBe(3);
     expect(d.bot.right).toBe(1);
-    expect(d.myPicks.total).toBe(0);
+    expect(d.bot.wrong).toBe(2);
+    expect(d.myPicks.total).toBe(1);
+    expect(d.myPicks.wrong).toBe(1);
   });
 });
 
 describe("scoreRowVsBot", () => {
-  it("returns null for IGNORED / PLACEMENT", () => {
+  it("scores IGNORED / PLACEMENT like other resolved rows", () => {
     expect(
       scoreRowVsBot({
         fromOpenTime: 0,
@@ -81,7 +83,7 @@ describe("scoreRowVsBot", () => {
         actual: "UP",
         result: "IGNORED",
       }),
-    ).toBeNull();
+    ).toBe("RIGHT");
     expect(
       scoreRowVsBot({
         fromOpenTime: 0,
@@ -89,6 +91,18 @@ describe("scoreRowVsBot", () => {
         botExpected: "UP",
         actual: "DOWN",
         result: "PLACEMENT",
+      }),
+    ).toBe("WRONG");
+  });
+
+  it("returns null for PENDING", () => {
+    expect(
+      scoreRowVsBot({
+        fromOpenTime: 0,
+        expected: "UP",
+        botExpected: "UP",
+        actual: "UP",
+        result: "PENDING",
       }),
     ).toBeNull();
   });
@@ -113,7 +127,7 @@ describe("scoreRowVsBot", () => {
 });
 
 describe("scoreRowVsMyPick", () => {
-  it("returns null for IGNORED / PLACEMENT", () => {
+  it("scores PLACEMENT when humanPick is set", () => {
     expect(
       scoreRowVsMyPick({
         fromOpenTime: 0,
@@ -122,7 +136,7 @@ describe("scoreRowVsMyPick", () => {
         actual: "UP",
         result: "PLACEMENT",
       }),
-    ).toBeNull();
+    ).toBe("RIGHT");
   });
 
   it("returns null without human pick", () => {

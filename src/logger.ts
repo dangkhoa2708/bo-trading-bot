@@ -30,9 +30,8 @@ export type PredictionLogRow = {
   humanPick: "UP" | "DOWN" | null;
   actual: "UP" | "DOWN" | "FLAT";
   /**
-   * <code>RIGHT</code>/<code>WRONG</code>: legacy candle-scored rows.
-   * <code>IGNORED</code>: next candle closed with no Pancake bet for this prediction (reports: Ignored cases).
-   * <code>PLACEMENT</code>: bet recorded; outcome is on-chain / Pancake messages, not candle Telegram.
+   * <code>IGNORED</code> / <code>PLACEMENT</code>: current rows; daily reports still score next-candle vs bot/pick.
+   * <code>RIGHT</code>/<code>WRONG</code>: older rows only (same scoring semantics).
    */
   result: "RIGHT" | "WRONG" | "IGNORED" | "PLACEMENT";
   setup: string;

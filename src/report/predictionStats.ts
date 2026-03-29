@@ -7,13 +7,17 @@ export type StatsPredictionRow = {
   botExpected?: "UP" | "DOWN";
   humanPick?: "UP" | "DOWN" | null;
   actual: string;
-  /** Excluded from bot / my-picks candle stats when <code>IGNORED</code> or <code>PLACEMENT</code>. */
+  /** Logged resolution label; does not remove a row from candle stats unless still pending. */
   result?: string;
 };
 
+/**
+ * Include every resolved prediction row: next-candle <code>actual</code> vs bot / pick still matters
+ * for IGNORED (no bet) and PLACEMENT (bet placed) as well as legacy RIGHT/WRONG.
+ */
 export function countsTowardCandlePredictionStats(p: StatsPredictionRow): boolean {
   const r = p.result;
-  if (r === "IGNORED" || r === "PLACEMENT") return false;
+  if (r === "PENDING") return false;
   return true;
 }
 
