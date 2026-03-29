@@ -1,4 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+/** Engine tests target strict regime filters; live `config.ts` may default `relaxedSignalFilters: true`. */
+vi.mock("../src/config.js", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../src/config.js")>();
+  return {
+    ...mod,
+    config: {
+      ...mod.config,
+      relaxedSignalFilters: false,
+      /** Keep strict exhaustion body in tests; live default is lower (0.55). */
+      exhaustionRevBodyVsBaselineMult: 1.0,
+      momentumAllowDojiInnerBars: false,
+    },
+  };
+});
+
 import { evaluate } from "../src/strategy/engine.js";
 import type { Candle } from "../src/types.js";
 

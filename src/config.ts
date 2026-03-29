@@ -13,10 +13,24 @@ export type BotConfig = {
   momentumRangeVsAvg: number;
   minBodyToRange: number;
   maxCloseToExtremePct: number;
+  /**
+   * When true, the first two of the last-3 same-color bars may be “doji” inners: small body/range,
+   * only need min range vs baseline; signal bar (last) always full checks.
+   */
+  momentumAllowDojiInnerBars: boolean;
+  /** Inner bar counts as doji if body/range ≤ this (signal bar never uses this path). */
+  momentumDojiMaxBodyToRange: number;
+  /** Doji inner bar: range must be ≥ this × baseline avg range. */
+  momentumDojiMinRangeVsAvgMult: number;
 
   exhaustionRunMin: number;
   exhaustionRevMinPrevRangeMult: number;
   exhaustionRevMaxPrevRangeMult: number;
+  /**
+   * Reversal body must be ≥ this × avg body of pre-run baseline (was hard-coded 1.0).
+   * Lower = allow smaller first counter bars after a grind (e.g. 0.55).
+   */
+  exhaustionRevBodyVsBaselineMult: number;
   /** If false, Exhaustion skips near support/resistance veto (more signals). */
   exhaustionApplyLevelReconfirm: boolean;
 
@@ -114,9 +128,16 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   minBodyToRange: 0.33,
   maxCloseToExtremePct: 0.48,
 
+  momentumAllowDojiInnerBars: true,
+  momentumDojiMaxBodyToRange: 0.22,
+  momentumDojiMinRangeVsAvgMult: 0.26,
+
   exhaustionRunMin: 3,
   exhaustionRevMinPrevRangeMult: 0.2,
-  exhaustionRevMaxPrevRangeMult: 0.62,
+  /** Max revRange/prevRange; was 0.62 — too strict when last green is small and reversal red is legitimately larger. */
+  exhaustionRevMaxPrevRangeMult: 2.0,
+  /** First counter-tick body can be smaller than long-run avg body (still needs strongClose). */
+  exhaustionRevBodyVsBaselineMult: 0.55,
   /** Off = fewer exhaustion vetoes near S/R (more signals). */
   exhaustionApplyLevelReconfirm: false,
 
@@ -161,7 +182,7 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   dryRun: false,
 
   /** Set `true` here for looser signals (manual review); see JSDoc on `BotConfig.relaxedSignalFilters`. */
-  relaxedSignalFilters: false,
+  relaxedSignalFilters: true,
 
   /** Allow back-to-back Mirror UP/DOWN Telegram alerts (manual review; more alerts). */
   mirrorAllowRepeatSameDirection: true,

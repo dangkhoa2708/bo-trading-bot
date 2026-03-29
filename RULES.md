@@ -60,12 +60,8 @@ Concrete numbers are in `src/config.ts`. The **default preset is relaxed** for l
 ### Setup A: Momentum Continuation
 
 - Last 3 candles are same color (all green or all red)
-- Each of those 3 bodies is at least `MOMENTUM_BODY_VS_AVG *` recent average body
-- Each of those 3 ranges is at least `MOMENTUM_RANGE_VS_AVG *` recent average range
-- Each has strong close (body/range >= `MIN_BODY_TO_RANGE`)
-- Each closes near its directional extreme:
-  - green: `(high-close)/range <= MAX_CLOSE_TO_EXTREME_PCT`
-  - red: `(close-low)/range <= MAX_CLOSE_TO_EXTREME_PCT`
+- **Signal bar** (latest of the 3): body/range vs baseline (`MOMENTUM_BODY_VS_AVG`, `MOMENTUM_RANGE_VS_AVG`), strong close (`MIN_BODY_TO_RANGE`), close near directional extreme (`MAX_CLOSE_TO_EXTREME_PCT` — green: `(high-close)/range`; red: `(close-low)/range`).
+- **Inner bars** (earlier two of the three): if `momentumAllowDojiInnerBars` and `body/range ≤ momentumDojiMaxBodyToRange`, only require **range ≥ momentumDojiMinRangeVsAvgMult ×** baseline avg range (still same color); else same rules as the signal bar.
 - EMA filter:
   - Bullish momentum valid only if close > EMA20 -> signal `UP`
   - Bearish momentum valid only if close < EMA20 -> signal `DOWN`
@@ -85,6 +81,7 @@ Concrete numbers are in `src/config.ts`. The **default preset is relaxed** for l
 - Latest reversal candle must close near its directional extreme (`MAX_CLOSE_TO_EXTREME_PCT`)
 - Latest reversal candle range must be within previous candle range ×
   [`EXHAUSTION_REV_MIN_PREV_RANGE_MULT`, `EXHAUSTION_REV_MAX_PREV_RANGE_MULT`]
+- Reversal **body** ≥ `exhaustionRevBodyVsBaselineMult` × average body of the pre-run baseline (not necessarily full 1× avg — small first counter bars after a grind)
 - Weakening evidence required from run:
   - shrinking body and/or
   - increasing wick pressure on trend side
@@ -167,11 +164,13 @@ From `src/config.ts`:
 - `bodyLookback=20`
 - `momentumBodyVsAvg=0.56`
 - `momentumRangeVsAvg=0.56`
+- `momentumAllowDojiInnerBars=true`, `momentumDojiMaxBodyToRange=0.22`, `momentumDojiMinRangeVsAvgMult=0.26`
 - `minBodyToRange=0.33`
 - `maxCloseToExtremePct=0.48`
 - `exhaustionRunMin=3`
 - `exhaustionRevMinPrevRangeMult=0.2`
-- `exhaustionRevMaxPrevRangeMult=0.62`
+- `exhaustionRevMaxPrevRangeMult=2.0` (reversal may exceed prior bar’s range when the run ends in small greens)
+- `exhaustionRevBodyVsBaselineMult=0.55`
 - `exhaustionApplyLevelReconfirm=false`
 - `chopLookback=4`
 - `lowVolFactor=0.3`

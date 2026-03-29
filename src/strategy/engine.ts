@@ -258,7 +258,8 @@ function mirrorDownPassesReconfirm(candles: Candle[]): boolean {
   return runLen <= config.momentumMaxImpulseRun;
 }
 
-function momentumWindow(
+/** Exported for tests / diagnostics; live path uses {@link evaluate} only. */
+export function momentumWindow(
   candles: Candle[],
 ): { ok: boolean; dir: "UP" | "DOWN"; note: string } {
   if (candles.length < 3 + config.bodyLookback) {
@@ -279,7 +280,28 @@ function momentumWindow(
     return { ok: false, dir: "UP", note: "zero avg range" };
   }
 
-  for (const c of last3) {
+  const dir = allGreen ? "UP" : "DOWN";
+  const dojiInner = (c: Candle): boolean => {
+    const r = range(c);
+    return r > 0 && body(c) / r <= config.momentumDojiMaxBodyToRange;
+  };
+
+  for (let i = 0; i < last3.length; i++) {
+    const c = last3[i]!;
+    const isSignalBar = i === last3.length - 1;
+    const useDojiInner =
+      config.momentumAllowDojiInnerBars &&
+      !isSignalBar &&
+      ((dir === "UP" && isGreen(c)) || (dir === "DOWN" && isRed(c))) &&
+      dojiInner(c);
+
+    if (useDojiInner) {
+      if (range(c) < baseRangeAvg * config.momentumDojiMinRangeVsAvgMult) {
+        return { ok: false, dir: "UP", note: "doji inner range vs avg fail" };
+      }
+      continue;
+    }
+
     if (body(c) < baseAvg * config.momentumBodyVsAvg) {
       return { ok: false, dir: "UP", note: "body vs avg fail" };
     }
@@ -290,9 +312,18 @@ function momentumWindow(
       return { ok: false, dir: "UP", note: "wicks too large" };
     }
   }
-  const dir = allGreen ? "UP" : "DOWN";
-  if (!last3.every((c) => closeNearExtreme(c, dir))) {
-    return { ok: false, dir: "UP", note: "close not near extreme" };
+
+  for (let i = 0; i < last3.length; i++) {
+    const c = last3[i]!;
+    const isSignalBar = i === last3.length - 1;
+    const useDojiInner =
+      config.momentumAllowDojiInnerBars &&
+      !isSignalBar &&
+      ((dir === "UP" && isGreen(c)) || (dir === "DOWN" && isRed(c))) &&
+      dojiInner(c);
+    if (!useDojiInner && !closeNearExtreme(c, dir)) {
+      return { ok: false, dir: "UP", note: "close not near extreme" };
+    }
   }
   return { ok: true, dir, note: "momentum" };
 }
@@ -353,7 +384,9 @@ function exhaustion(
   }
   const baseAvg = avgBody(baseline);
   if (baseAvg === 0) return { ok: false, signal: "UP", note: "no exhaustion" };
-  if (body(rev) < baseAvg * 1.0) return { ok: false, signal: "UP", note: "no exhaustion" };
+  if (body(rev) < baseAvg * config.exhaustionRevBodyVsBaselineMult) {
+    return { ok: false, signal: "UP", note: "no exhaustion" };
+  }
   if (!strongClose(rev)) return { ok: false, signal: "UP", note: "no exhaustion" };
   const revDir: "UP" | "DOWN" = isGreen(rev) ? "UP" : "DOWN";
   if (!closeNearExtreme(rev, revDir)) return { ok: false, signal: "UP", note: "no exhaustion" };
