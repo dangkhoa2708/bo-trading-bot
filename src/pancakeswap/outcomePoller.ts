@@ -80,9 +80,18 @@ async function pollTick(send: SendTelegram): Promise<void> {
   const exhaustionWallet = getWalletForSetup("Exhaustion");
   const mirrorWallet = getWalletForSetup("Mirror");
   const sharedWallet = getWalletForSetup(null);
-  for (const wallet of [exhaustionWallet, mirrorWallet, sharedWallet]) {
+  const wallets: Array<
+    | { key: "Exhaustion" | "Mirror" | "Shared"; privateKey: `0x${string}` }
+    | null
+  > = [
+    exhaustionWallet ? { key: "Exhaustion", privateKey: exhaustionWallet.privateKey } : null,
+    mirrorWallet ? { key: "Mirror", privateKey: mirrorWallet.privateKey } : null,
+    sharedWallet ? { key: "Shared", privateKey: sharedWallet.privateKey } : null,
+  ];
+  for (const wallet of wallets) {
     if (!wallet) continue;
     void updateWalletBalanceCache({
+      key: wallet.key,
       rpcUrl: config.bscRpcUrl,
       privateKey: wallet.privateKey,
     });
