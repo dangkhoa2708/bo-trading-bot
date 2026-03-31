@@ -30,6 +30,35 @@ function choppy(candles: Candle[]): boolean {
   return changes >= n - 1;
 }
 
+/** Mirror UP: optional regime filter — EMA20 not in a steep downtrend vs N bars ago. */
+function mirrorUpEmaSlopeOk(candles: Candle[]): boolean {
+  const n = config.mirrorUpMinEmaSlopeBars;
+  if (n <= 0) return true;
+  if (candles.length < n + config.emaPeriod + 2) return true;
+  const emaNow = emaLast(closes(candles), config.emaPeriod);
+  const emaPast = emaLast(closes(candles.slice(0, -n)), config.emaPeriod);
+  if (emaNow === null || emaPast === null || emaPast <= 0) return true;
+  const slope = (emaNow - emaPast) / emaPast;
+  return slope >= config.mirrorUpMinEmaSlopePct;
+}
+
+/** Mirror UP: optional — too many recent closes below EMA20 = persistent bearish structure. */
+function mirrorUpTooManyClosesBelowEma(candles: Candle[]): boolean {
+  const lb = config.mirrorUpBelowEmaLookback;
+  const maxBelow = config.mirrorUpMaxClosesBelowEma;
+  if (lb <= 0) return false;
+  const excludeLast = 3;
+  const end = candles.length - excludeLast;
+  const start = Math.max(config.emaPeriod, end - lb);
+  if (start >= end) return false;
+  let count = 0;
+  for (let i = start; i < end; i++) {
+    const e = emaLast(closes(candles.slice(0, i + 1)), config.emaPeriod);
+    if (e !== null && candles[i]!.close < e) count++;
+  }
+  return count > maxBelow;
+}
+
 function lowVolatility(candles: Candle[]): boolean {
   if (candles.length < config.lowVolCompare) return false;
   const tail = candles.slice(-5);
@@ -76,6 +105,23 @@ function closeNearExtreme(c: Candle, dir: "UP" | "DOWN"): boolean {
     return (c.high - c.close) / r <= config.maxCloseToExtremePct;
   }
   return (c.close - c.low) / r <= config.maxCloseToExtremePct;
+}
+
+function exhaustionCloseNearExtreme(
+  c: Candle,
+  revDir: "UP" | "DOWN",
+  exhaustionSignal: "UP" | "DOWN",
+): boolean {
+  const r = range(c);
+  if (r === 0) return false;
+  const pct =
+    exhaustionSignal === "UP"
+      ? config.exhaustionUpRevMaxCloseToExtremePct
+      : config.exhaustionRevMaxCloseToExtremePct;
+  if (revDir === "UP") {
+    return (c.high - c.close) / r <= pct;
+  }
+  return (c.close - c.low) / r <= pct;
 }
 
 function priorSwingLow(candles: Candle[], lookback: number): number | null {
@@ -207,7 +253,11 @@ function exhaustionPassesReconfirm(
   candles: Candle[],
   ex: { signal: "UP" | "DOWN" },
 ): boolean {
-  if (!config.exhaustionApplyLevelReconfirm) return true;
+  const applyLevels =
+    ex.signal === "DOWN"
+      ? config.exhaustionDownApplyLevelReconfirm
+      : config.exhaustionUpApplyLevelReconfirm;
+  if (!applyLevels) return true;
   const atr = atrLast(candles, config.atrPeriod);
   if (ex.signal === "DOWN" && nearSupport(candles, atr)) return false;
   if (ex.signal === "UP" && nearResistance(candles, atr)) return false;
@@ -255,7 +305,10 @@ function mirrorUpPassesReconfirm(candles: Candle[]): boolean {
 /** Mirror DOWN fallback: impulse run only (no level / same-dir window vetoes). */
 function mirrorDownPassesReconfirm(candles: Candle[]): boolean {
   const runLen = sameDirectionRunLength(candles, "DOWN");
-  return runLen <= config.momentumMaxImpulseRun;
+  const last = candles[candles.length - 1];
+  if (!last) return false;
+  if (runLen > config.mirrorDownMaxImpulseRun) return false;
+  return body(last) / Math.max(range(last), 1e-9) >= config.mirrorDownMinBodyToRange;
 }
 
 /** Exported for tests / diagnostics; live path uses {@link evaluate} only. */
@@ -330,8 +383,11 @@ export function momentumWindow(
 
 function exhaustion(
   candles: Candle[],
+  ema: number,
 ): { ok: boolean; signal: "UP" | "DOWN"; note: string } {
-  const need = config.exhaustionRunMin + 1;
+  /** Enough bars for the shorter of the two run rules + baseline (per-direction stricter mins apply inside). */
+  const need =
+    Math.min(config.exhaustionUpRunMin, config.exhaustionDownRunMin) + 1;
   if (candles.length < need + config.bodyLookback) {
     return { ok: false, signal: "UP", note: "short history" };
   }
@@ -356,13 +412,28 @@ function exhaustion(
     }
     break;
   }
-  if (runLen < config.exhaustionRunMin) {
+  const signal: "UP" | "DOWN" = runGreen ? "DOWN" : "UP";
+  const runMin =
+    signal === "DOWN" ? config.exhaustionDownRunMin : config.exhaustionUpRunMin;
+  const maxPrevRangeMult =
+    signal === "DOWN"
+      ? config.exhaustionDownRevMaxPrevRangeMult
+      : config.exhaustionUpRevMaxPrevRangeMult;
+  const bodyVsBaselineMult =
+    signal === "DOWN"
+      ? config.exhaustionDownRevBodyVsBaselineMult
+      : config.exhaustionUpRevBodyVsBaselineMult;
+  const minBodyToRange =
+    signal === "DOWN"
+      ? config.exhaustionDownRevMinBodyToRange
+      : config.exhaustionUpRevMinBodyToRange;
+  if (runLen < runMin) {
     return { ok: false, signal: "UP", note: "no exhaustion" };
   }
 
   // Use a bounded recent segment of the run for quality checks, while allowing
   // eligibility from any longer streak (>= EXHAUSTION_RUN_MIN).
-  const analysisRunLen = Math.max(config.exhaustionRunMin, 4);
+  const analysisRunLen = Math.max(runMin, 4);
   const run = candles.slice(-(analysisRunLen + 1), -1);
 
   const prevRange = range(prev);
@@ -371,7 +442,7 @@ function exhaustion(
   const revVsPrev = revRange / prevRange;
   if (
     revVsPrev < config.exhaustionRevMinPrevRangeMult ||
-    revVsPrev > config.exhaustionRevMaxPrevRangeMult
+    revVsPrev > maxPrevRangeMult
   ) {
     return { ok: false, signal: "UP", note: "no exhaustion" };
   }
@@ -384,12 +455,16 @@ function exhaustion(
   }
   const baseAvg = avgBody(baseline);
   if (baseAvg === 0) return { ok: false, signal: "UP", note: "no exhaustion" };
-  if (body(rev) < baseAvg * config.exhaustionRevBodyVsBaselineMult) {
+  if (body(rev) < baseAvg * bodyVsBaselineMult) {
     return { ok: false, signal: "UP", note: "no exhaustion" };
   }
-  if (!strongClose(rev)) return { ok: false, signal: "UP", note: "no exhaustion" };
+  if (range(rev) === 0 || body(rev) / range(rev) < minBodyToRange) {
+    return { ok: false, signal: "UP", note: "no exhaustion" };
+  }
   const revDir: "UP" | "DOWN" = isGreen(rev) ? "UP" : "DOWN";
-  if (!closeNearExtreme(rev, revDir)) return { ok: false, signal: "UP", note: "no exhaustion" };
+  if (!exhaustionCloseNearExtreme(rev, revDir, signal)) {
+    return { ok: false, signal: "UP", note: "no exhaustion" };
+  }
 
   const bodies = run.map(body);
   const weakBodies =
@@ -407,7 +482,12 @@ function exhaustion(
     return { ok: false, signal: "UP", note: "no exhaustion" };
   }
 
-  const signal: "UP" | "DOWN" = runGreen ? "DOWN" : "UP";
+  if (
+    config.exhaustionRequireEmaAlignment &&
+    ((signal === "UP" && rev.close <= ema) || (signal === "DOWN" && rev.close >= ema))
+  ) {
+    return { ok: false, signal: "UP", note: "no exhaustion" };
+  }
   return {
     ok: true,
     signal,
@@ -427,29 +507,40 @@ function mirrorWeakRedStrongGreen(
   if (!isGreen(c) || !isRed(a) || !isRed(b)) return { ok: false, note: "" };
 
   // Guard 1: avoid Mirror UP when price is still meaningfully below EMA20.
-  const minClose = ema * (1 - config.mirrorMaxBelowEmaPct);
+  const minClose = ema * (1 - config.mirrorUpMaxBelowEmaPct);
   if (c.close < minClose) return { ok: false, note: "" };
+
+  if (config.mirrorUpApplyChoppyVeto && choppy(candles)) {
+    return { ok: false, note: "" };
+  }
+  if (!mirrorUpEmaSlopeOk(candles)) return { ok: false, note: "" };
+  if (mirrorUpTooManyClosesBelowEma(candles)) return { ok: false, note: "" };
 
   // Guard 2: avoid Mirror UP right after a big red "dump" candle (vs ATR).
   const atr = atrLast(candles, config.atrPeriod);
-  if (
-    !config.relaxedSignalFilters &&
+  const applyDumpVeto =
+    (!config.relaxedSignalFilters || config.mirrorUpApplyDumpVetoWhenRelaxed) &&
     atr !== null &&
-    atr > 0
-  ) {
+    atr > 0;
+  if (applyDumpVeto) {
     const lookback = Math.max(0, config.mirrorDumpLookback);
     const excludeLast3Start = Math.max(0, candles.length - 3 - lookback);
     const tail = candles.slice(excludeLast3Start, candles.length - 3);
     const hadDump = tail.some(
-      (x) => isRed(x) && range(x) >= atr * config.mirrorDumpAtrMult,
+      (x) => isRed(x) && range(x) >= atr * config.mirrorUpDumpAtrMult,
     );
     if (hadDump) return { ok: false, note: "" };
   }
 
   const weakening = body(a) > body(b);
   const weakRedBody =
-    body(b) < range(b) * config.mirrorWeakRedBodyRangePct;
-  const strongGreen = body(c) / range(c) >= config.minBodyToRange;
+    body(b) < range(b) * config.mirrorUpWeakRedBodyRangePct;
+  const prevRedBody = Math.max(body(b), 1e-9);
+  const reclaimPrevRedBodyPct = (c.close - b.close) / prevRedBody;
+  const strongGreen =
+    body(c) / Math.max(range(c), 1e-9) >= config.mirrorUpMinGreenBodyToRange &&
+    body(c) >= body(b) * config.mirrorUpMinGreenBodyVsPrevRedMult &&
+    reclaimPrevRedBodyPct >= config.mirrorUpMinReclaimPrevRedBodyPct;
   if (weakening && weakRedBody && strongGreen && closeNearExtreme(c, "UP")) {
     return { ok: true, note: "Setup C: weakening reds + strong green" };
   }
@@ -487,7 +578,7 @@ export function evaluate(candles: Candle[]): StrategyResult {
 
   const last = candles[candles.length - 1]!;
 
-  const ex = exhaustion(candles);
+  const ex = exhaustion(candles, ema);
   if (ex.ok && exhaustionPassesReconfirm(candles, ex)) {
     return {
       signal: ex.signal,

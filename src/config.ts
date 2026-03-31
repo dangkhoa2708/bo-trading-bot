@@ -31,8 +31,36 @@ export type BotConfig = {
    * Lower = allow smaller first counter bars after a grind (e.g. 0.55).
    */
   exhaustionRevBodyVsBaselineMult: number;
+  /** Exhaustion reversal body/range must be ≥ this (separate from Momentum/Mirror wick tolerance). */
+  exhaustionRevMinBodyToRange: number;
+  /** Exhaustion reversal close must be within this fraction of candle range from its extreme. */
+  exhaustionRevMaxCloseToExtremePct: number;
+  /** If true, Exhaustion UP must close above EMA and DOWN below EMA. */
+  exhaustionRequireEmaAlignment: boolean;
   /** If false, Exhaustion skips near support/resistance veto (more signals). */
   exhaustionApplyLevelReconfirm: boolean;
+  /** DOWN-only override for min same-color run before reversal. */
+  exhaustionDownRunMin: number;
+  /** DOWN-only override for max reversal/previous range ratio. */
+  exhaustionDownRevMaxPrevRangeMult: number;
+  /** DOWN-only override for reversal body vs baseline multiplier. */
+  exhaustionDownRevBodyVsBaselineMult: number;
+  /** DOWN-only override for reversal body/range floor. */
+  exhaustionDownRevMinBodyToRange: number;
+  /** DOWN-only override for near-support veto. */
+  exhaustionDownApplyLevelReconfirm: boolean;
+  /** UP-only override for min same-color run before reversal. */
+  exhaustionUpRunMin: number;
+  /** UP-only override for max reversal/previous range ratio. */
+  exhaustionUpRevMaxPrevRangeMult: number;
+  /** UP-only override for reversal body vs baseline multiplier. */
+  exhaustionUpRevBodyVsBaselineMult: number;
+  /** UP-only override for reversal body/range floor. */
+  exhaustionUpRevMinBodyToRange: number;
+  /** UP-only: max distance from close to high (reversal green), stricter = smaller. */
+  exhaustionUpRevMaxCloseToExtremePct: number;
+  /** UP-only override for near-resistance veto. */
+  exhaustionUpApplyLevelReconfirm: boolean;
 
   chopLookback: number;
   lowVolFactor: number;
@@ -49,8 +77,45 @@ export type BotConfig = {
   mirrorDumpLookback: number;
   /** Mirror UP: weak red body must be below this fraction of candle range (higher = looser). */
   mirrorWeakRedBodyRangePct: number;
+  /** Mirror UP-only EMA distance cap. Smaller = stricter recovery requirement. */
+  mirrorUpMaxBelowEmaPct: number;
+  /** Mirror UP-only dump veto threshold (ATR multiple). Smaller = stricter. */
+  mirrorUpDumpAtrMult: number;
+  /** Mirror UP-only weak-red threshold. Smaller = stricter. */
+  mirrorUpWeakRedBodyRangePct: number;
+  /** Mirror UP-only green reversal body/range floor. */
+  mirrorUpMinGreenBodyToRange: number;
+  /** Mirror UP-only green body must be >= this × second red body. */
+  mirrorUpMinGreenBodyVsPrevRedMult: number;
+  /** Mirror UP-only: reclaim at least this fraction of the second red body by the green close. */
+  mirrorUpMinReclaimPrevRedBodyPct: number;
+  /** Mirror UP-only: optionally apply dump veto even when relaxed filters are on. */
+  mirrorUpApplyDumpVetoWhenRelaxed: boolean;
+  /**
+   * Mirror UP-only: when true, reject Mirror UP if `choppy()` (alternating bars) even when
+   * `relaxedSignalFilters` disables the global chop skip.
+   */
+  mirrorUpApplyChoppyVeto: boolean;
+  /**
+   * Mirror UP-only: require EMA20 slope over this many bars to be ≥ `mirrorUpMinEmaSlopePct`
+   * (relative change `(ema_now − ema_past) / ema_past`). `0` = disabled.
+   */
+  mirrorUpMinEmaSlopeBars: number;
+  /** Minimum allowed EMA20 relative slope over `mirrorUpMinEmaSlopeBars` (see above). */
+  mirrorUpMinEmaSlopePct: number;
+  /**
+   * Mirror UP-only: count closes strictly below EMA20 on each bar in this lookback (excluding the
+   * last 3 bars). `0` = skip this filter.
+   */
+  mirrorUpBelowEmaLookback: number;
+  /** If `mirrorUpBelowEmaLookback` > 0, veto when closes-below-EMA count exceeds this. */
+  mirrorUpMaxClosesBelowEma: number;
   /** Mirror DOWN (Setup C fallback): only cap impulse run, not levels/window. */
   mirrorDownLightReconfirm: boolean;
+  /** Mirror DOWN-only red signal bar body/range floor. */
+  mirrorDownMinBodyToRange: number;
+  /** Mirror DOWN-only max impulse run. */
+  mirrorDownMaxImpulseRun: number;
 
   /** Opposite-color body ≤ this × ATR counts as micro pause (does not reset run). */
   momentumMicroPauseBodyAtrMult: number;
@@ -132,14 +197,36 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   momentumDojiMaxBodyToRange: 0.22,
   momentumDojiMinRangeVsAvgMult: 0.26,
 
+  /** Shared Exhaustion baseline; DOWN can be made stricter via the overrides below. */
   exhaustionRunMin: 3,
   exhaustionRevMinPrevRangeMult: 0.2,
-  /** Max revRange/prevRange; was 0.62 — too strict when last green is small and reversal red is legitimately larger. */
+  /** Keep looser global cap; DOWN can use a tighter cap through its override. */
   exhaustionRevMaxPrevRangeMult: 2.0,
-  /** First counter-tick body can be smaller than long-run avg body (still needs strongClose). */
+  /** Keep looser UP baseline; stricter DOWN body is applied via override. */
   exhaustionRevBodyVsBaselineMult: 0.55,
+  /** Default matches prior global wick tolerance used by Exhaustion. */
+  exhaustionRevMinBodyToRange: 0.33,
+  /** Default matches prior global close-to-extreme tolerance used by Exhaustion. */
+  exhaustionRevMaxCloseToExtremePct: 0.48,
+  /** Off by default; can improve win rate at the cost of fewer signals. */
+  exhaustionRequireEmaAlignment: false,
   /** Off = fewer exhaustion vetoes near S/R (more signals). */
   exhaustionApplyLevelReconfirm: false,
+  /** DOWN is noisier; 90d search preferred longer runs and a stronger body/range floor. */
+  exhaustionDownRunMin: 5,
+  exhaustionDownRevMaxPrevRangeMult: 2.0,
+  exhaustionDownRevBodyVsBaselineMult: 0.55,
+  exhaustionDownRevMinBodyToRange: 0.43,
+  exhaustionDownApplyLevelReconfirm: false,
+  /**
+   * UP: 90d search — best trade-off vs baseline was run 4, body 0.75, maxPrev 2, level off.
+   */
+  exhaustionUpRunMin: 4,
+  exhaustionUpRevMaxPrevRangeMult: 2.0,
+  exhaustionUpRevBodyVsBaselineMult: 0.75,
+  exhaustionUpRevMinBodyToRange: 0.33,
+  exhaustionUpRevMaxCloseToExtremePct: 0.48,
+  exhaustionUpApplyLevelReconfirm: false,
 
   /** Longer alternating window required → fewer “choppy” skips. */
   chopLookback: 4,
@@ -160,7 +247,24 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   mirrorDumpAtrMult: 6.5,
   mirrorDumpLookback: 2,
   mirrorWeakRedBodyRangePct: 0.68,
+  mirrorUpMaxBelowEmaPct: 0.018,
+  mirrorUpDumpAtrMult: 6.5,
+  mirrorUpWeakRedBodyRangePct: 0.68,
+  mirrorUpMinGreenBodyToRange: 0.33,
+  mirrorUpMinGreenBodyVsPrevRedMult: 1.0,
+  mirrorUpMinReclaimPrevRedBodyPct: 0,
+  mirrorUpApplyDumpVetoWhenRelaxed: false,
+  mirrorUpApplyChoppyVeto: false,
+  /** 90d strict Mirror context search: floor EMA slope to avoid steep bearish EMA. */
+  mirrorUpMinEmaSlopeBars: 6,
+  mirrorUpMinEmaSlopePct: -0.003,
+  /** 90d strict search: veto UP when >5 of prior 10 bars (excl. last 3) closed below EMA20. */
+  mirrorUpBelowEmaLookback: 10,
+  mirrorUpMaxClosesBelowEma: 5,
   mirrorDownLightReconfirm: true,
+  /** Mirror DOWN: 90d strict search favored a much stronger red signal bar. */
+  mirrorDownMinBodyToRange: 0.56,
+  mirrorDownMaxImpulseRun: 6,
 
   momentumMicroPauseBodyAtrMult: 0.35,
   momentumMicroPauseBodyVsMedianMult: 0.42,
@@ -184,8 +288,8 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   /** Set `true` here for looser signals (manual review); see JSDoc on `BotConfig.relaxedSignalFilters`. */
   relaxedSignalFilters: true,
 
-  /** Allow back-to-back Mirror UP/DOWN Telegram alerts (manual review; more alerts). */
-  mirrorAllowRepeatSameDirection: true,
+  /** Strict Mirror dedupe: do not emit same direction back-to-back. */
+  mirrorAllowRepeatSameDirection: false,
 
   bscRpcUrl: "https://bsc-dataseed.binance.org",
 

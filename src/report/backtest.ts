@@ -34,19 +34,21 @@ function formatEmittedRowLine(row: BacktestEmittedRow): string {
 export function buildBacktestReportHtml(r: BacktestResult): string {
   const d = r.predictionBySetup;
   const a = r.allEnginePredictionBySetup;
+  const dd = r.predictionByDirection;
+  const ad = r.allEnginePredictionByDirection;
 
   const header = [
     "📉 <b>Backtest</b> <i>(GMT+7)</i>",
     `🗓️ <b>Window</b>: last <code>${r.days}</code> day(s) of closed klines (ending now)`,
     `📎 <code>${escapeHtml(r.windowLabelGmt7)}</code>`,
     "",
-    "<i>Early bars in the window still “warm up” indicators. Predictions use the same next-candle rule as live.</i>",
+    "<i>Exact live mode: Exhaustion-only emits, same config, same dispatcher, same next-candle scoring.</i>",
     "",
     "📡 <b>Pair</b>",
     `• <code>${escapeHtml(r.pair)}</code>  <b>TF</b>: <code>${escapeHtml(r.interval)}</code>`,
     `• Klines in window: <code>${r.candleCount}</code>  <i>(+ ${r.candleCountFetched - r.candleCount} for resolving last prediction)</i>`,
     "",
-    "📡 <b>Signals</b> <i>(would send — same dispatcher as live)</i>",
+    "📡 <b>Signals</b> <i>(would send live — Exhaustion only)</i>",
     `• Total: <code>${r.emitted}</code>`,
     `• UP / DOWN: <code>${r.emittedUp} / ${r.emittedDown}</code>`,
     `• Setups: <code>${escapeHtml(r.setups)}</code>`,
@@ -58,6 +60,10 @@ export function buildBacktestReportHtml(r: BacktestResult): string {
     `• ❌ Wrong: <code>${r.predictionWrong}</code>`,
     `• 🏆 Win rate: <code>${r.predictionWinRatePct.toFixed(1)}%</code>`,
     "",
+    "↕️ <b>Exhaustion by direction (emitted)</b>",
+    `• UP: <code>${dd.UP.total}</code> (✅ <code>${dd.UP.right}</code> / ❌ <code>${dd.UP.wrong}</code>) — <code>${dd.UP.winRatePct.toFixed(1)}%</code>`,
+    `• DOWN: <code>${dd.DOWN.total}</code> (✅ <code>${dd.DOWN.right}</code> / ❌ <code>${dd.DOWN.wrong}</code>) — <code>${dd.DOWN.winRatePct.toFixed(1)}%</code>`,
+    "",
     "🧩 <b>By setup (emitted)</b>",
     `• Momentum: <code>${d.Momentum.total}</code> (✅ <code>${d.Momentum.right}</code> / ❌ <code>${d.Momentum.wrong}</code>) — <code>${d.Momentum.winRatePct.toFixed(1)}%</code>`,
     `• Exhaustion: <code>${d.Exhaustion.total}</code> (✅ <code>${d.Exhaustion.right}</code> / ❌ <code>${d.Exhaustion.wrong}</code>) — <code>${d.Exhaustion.winRatePct.toFixed(1)}%</code>`,
@@ -66,11 +72,15 @@ export function buildBacktestReportHtml(r: BacktestResult): string {
       ? `• Other: <code>${d.Other.total}</code> (✅ <code>${d.Other.right}</code> / ❌ <code>${d.Other.wrong}</code>) — <code>${d.Other.winRatePct.toFixed(1)}%</code>`
       : "• Other: <code>0</code>",
     "",
-    "🔓 <b>All engine UP/DOWN</b> <i>includes dispatcher-skipped (same dir / dup bar) — hypothetically traded every raw signal</i>",
+    "🔓 <b>All engine signals</b> <i>live-eligible only (Exhaustion) incl. dispatcher-skipped</i>",
     `• Total: <code>${r.allEnginePredictionTotal}</code>`,
     `• ✅ Right: <code>${r.allEnginePredictionRight}</code>`,
     `• ❌ Wrong: <code>${r.allEnginePredictionWrong}</code>`,
     `• 🏆 Win rate: <code>${r.allEnginePredictionWinRatePct.toFixed(1)}%</code>`,
+    "",
+    "↕️ <b>Exhaustion by direction (all engine)</b>",
+    `• UP: <code>${ad.UP.total}</code> (✅ <code>${ad.UP.right}</code> / ❌ <code>${ad.UP.wrong}</code>) — <code>${ad.UP.winRatePct.toFixed(1)}%</code>`,
+    `• DOWN: <code>${ad.DOWN.total}</code> (✅ <code>${ad.DOWN.right}</code> / ❌ <code>${ad.DOWN.wrong}</code>) — <code>${ad.DOWN.winRatePct.toFixed(1)}%</code>`,
     "",
     "🧩 <b>By setup (all engine)</b>",
     `• Momentum: <code>${a.Momentum.total}</code> (✅ <code>${a.Momentum.right}</code> / ❌ <code>${a.Momentum.wrong}</code>) — <code>${a.Momentum.winRatePct.toFixed(1)}%</code>`,

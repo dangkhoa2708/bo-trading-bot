@@ -19,9 +19,9 @@ For setup, run instructions, and operational notes, see `README.md`.
 
 ## Alert dispatch (Telegram / logs)
 
-Backtest showed **Mirror** did better with **same-direction dedupe** (skip when the new alert direction matches the **previous emitted** alert, any setup). **Momentum** and **Exhaustion** did better when **every** engine `UP`/`DOWN` is counted. Live defaults favor manual review:
+Backtest showed **Mirror** did better with **same-direction dedupe** (skip when the new alert direction matches the **previous emitted** alert, any setup). **Momentum** and **Exhaustion** did better when **every** engine `UP`/`DOWN` is counted.
 
-- **Mirror:** `mirrorAllowRepeatSameDirection` in `src/config.ts` (default **true**) — when **true**, Mirror behaves like Momentum for direction dedupe (back-to-back Mirror UP/DOWN allowed; also Mirror may follow same-dir Momentum). Set **`false`** to restore strict Mirror dedupe (aligns with historical backtest-style filtering).
+- **Mirror:** `mirrorAllowRepeatSameDirection` in `src/config.ts` (default **false**) — strict Mirror dedupe (no same-direction back-to-back Mirror emits). Set **`true`** to allow repeat-direction Mirror alerts for manual review (noisier).
 - **Momentum** and **Exhaustion:** at most one alert per candle open time; **same-direction back-to-back is allowed**.
 
 Implemented via `usesStrictDirectionDedupe(setup)` in `src/signal/dispatcher.ts` (backtest uses the same dispatcher).
@@ -94,6 +94,7 @@ Concrete numbers are in `src/config.ts`. The **default preset is relaxed** for l
 - Weak red sequence followed by strong green close -> signal `UP`
   - Guard: require close to be near/above EMA20 (avoid dead-cat bounces below EMA)
   - Guard: skip Mirror UP for a short window after a large red dump candle (range vs ATR)
+  - **Context (UP-only, `src/config.ts`):** `mirrorUpApplyChoppyVeto` rejects Mirror UP when the last `chopLookback` bars alternate color (even if global chop skip is off under relaxed mode). `mirrorUpMinEmaSlopeBars` / `mirrorUpMinEmaSlopePct` require EMA20 slope over N bars not to be below a floor. `mirrorUpBelowEmaLookback` / `mirrorUpMaxClosesBelowEma` veto when too many recent closes (excluding the last 3 bars) finished below EMA20 — persistent bearish structure. Defaults follow the 90d strict Mirror sweep unless you relax them.
   - **Reconfirmation:** green body must not exceed median / ATR spike caps (`mirrorMaxGreenBodyVsMedianMult`, `mirrorMaxGreenBodyAtrMult`); **no** near-resistance veto on Mirror UP (Momentum uses that filter).
 - Strong red momentum can still emit `DOWN` as mirror when momentum-down exists but EMA filter blocks classic momentum condition — **same reconfirmation as Momentum DOWN** (impulse run + near support).
 
@@ -183,6 +184,7 @@ From `src/config.ts`:
 - `mirrorDumpAtrMult=4.5`
 - `mirrorDumpLookback=2`
 - `mirrorWeakRedBodyRangePct=0.62`
+- Mirror UP context: `mirrorUpApplyChoppyVeto=false`, `mirrorUpMinEmaSlopeBars=6`, `mirrorUpMinEmaSlopePct=-0.003`, `mirrorUpBelowEmaLookback=10`, `mirrorUpMaxClosesBelowEma=5` (90d strict backtest sweep)
 - `mirrorDownLightReconfirm=true`
 - `momentumMicroPauseBodyAtrMult=0.35`
 - `momentumMicroPauseBodyVsMedianMult=0.42`

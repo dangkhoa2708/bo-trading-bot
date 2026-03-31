@@ -144,11 +144,11 @@ async function main(): Promise<void> {
     // Temporarily disable Telegram spam for candle-by-candle logs.
     await logRuntime(formatVerifyLog(c, result), "log");
 
-    // Mode: emit Exhaustion signals only.
+    // Mode: emit Exhaustion + Mirror signals (strict Mirror dedupe controlled by config).
     if (
       decision.emit &&
       result.signal !== "NONE" &&
-      result.setup === "Exhaustion"
+      (result.setup === "Exhaustion" || result.setup === "Mirror")
     ) {
       const predictionId = randomUUID();
       const signalId = `${c.openTime}-${result.signal}-${result.setup}`;
@@ -204,7 +204,7 @@ async function main(): Promise<void> {
         reason: result.reason,
       });
 
-      // Auto placement for Exhaustion signals (no manual pick required).
+      // Auto placement for Exhaustion + Mirror signals (no manual pick required).
       const placed = await autoPlacePancakeBetForSignal({
         signalId,
         predictionId,

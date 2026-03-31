@@ -28,6 +28,8 @@ export type PredStats = {
   winRatePct: number;
 };
 
+export type DirectionPredStats = Record<"UP" | "DOWN", PredStats>;
+
 export type BacktestEmittedRow = {
   /** Signal candle open (ms); matches pending resolution. */
   fromOpenTime: number;
@@ -68,6 +70,7 @@ export type BacktestResult = {
   predictionRight: number;
   predictionWrong: number;
   predictionWinRatePct: number;
+  predictionByDirection: DirectionPredStats;
   predictionBySetup: Record<"Momentum" | "Exhaustion" | "Mirror" | "Other", PredStats>;
   /**
    * Next-candle scores for every `evaluate()` UP/DOWN in the window, including
@@ -77,6 +80,7 @@ export type BacktestResult = {
   allEnginePredictionRight: number;
   allEnginePredictionWrong: number;
   allEnginePredictionWinRatePct: number;
+  allEnginePredictionByDirection: DirectionPredStats;
   allEnginePredictionBySetup: Record<
     "Momentum" | "Exhaustion" | "Mirror" | "Other",
     PredStats
@@ -92,6 +96,10 @@ function trimBuffer(candles: Candle[], max: number): void {
 
 function emptyPred(): PredStats {
   return { total: 0, right: 0, wrong: 0, winRatePct: 0 };
+}
+
+function emptyDirectionPred(): DirectionPredStats {
+  return { UP: emptyPred(), DOWN: emptyPred() };
 }
 
 function bucketSetup(
@@ -174,6 +182,13 @@ export async function runBacktest(
       Mirror: emptyPred(),
       Other: emptyPred(),
     };
+  const predictionByDirection: DirectionPredStats = emptyDirectionPred();
+  const allEnginePredictionByDirection: DirectionPredStats = emptyDirectionPred();
+
+  const isLiveEligibleSignal = (signal: {
+    signal: "UP" | "DOWN" | "NONE";
+    setup: string;
+  }): boolean => signal.signal !== "NONE" && signal.setup === "Exhaustion";
 
   for (const c of all) {
     if (pendingPrediction) {
@@ -202,12 +217,18 @@ export async function runBacktest(
       ) {
         const b = bucketSetup(pendingPrediction.fromSetup);
         allEnginePredictionBySetup[b].total++;
+        allEnginePredictionByDirection[pendingPrediction.predicted].total++;
         if (status === "RIGHT") allEnginePredictionBySetup[b].right++;
         else allEnginePredictionBySetup[b].wrong++;
+        if (status === "RIGHT") allEnginePredictionByDirection[pendingPrediction.predicted].right++;
+        else allEnginePredictionByDirection[pendingPrediction.predicted].wrong++;
         if (pendingPrediction.emitted) {
           predictionBySetup[b].total++;
+          predictionByDirection[pendingPrediction.predicted].total++;
           if (status === "RIGHT") predictionBySetup[b].right++;
           else predictionBySetup[b].wrong++;
+          if (status === "RIGHT") predictionByDirection[pendingPrediction.predicted].right++;
+          else predictionByDirection[pendingPrediction.predicted].wrong++;
         }
       }
       pendingPrediction = null;
@@ -231,11 +252,11 @@ export async function runBacktest(
     const result = evaluate(candles);
     const decision = dispatcher.shouldEmit(c.openTime, result);
 
-    if (result.signal !== "NONE") {
+    if (isLiveEligibleSignal(result)) {
       rawSignals++;
     }
 
-    if (result.signal === "NONE") {
+    if (!isLiveEligibleSignal(result)) {
       continue;
     }
 
@@ -277,11 +298,23 @@ export async function runBacktest(
     const b = predictionBySetup[key];
     b.winRatePct = b.total > 0 ? (b.right / b.total) * 100 : 0;
   }
+  for (const key of Object.keys(predictionByDirection) as Array<
+    keyof typeof predictionByDirection
+  >) {
+    const b = predictionByDirection[key];
+    b.winRatePct = b.total > 0 ? (b.right / b.total) * 100 : 0;
+  }
 
   for (const key of Object.keys(allEnginePredictionBySetup) as Array<
     keyof typeof allEnginePredictionBySetup
   >) {
     const b = allEnginePredictionBySetup[key];
+    b.winRatePct = b.total > 0 ? (b.right / b.total) * 100 : 0;
+  }
+  for (const key of Object.keys(allEnginePredictionByDirection) as Array<
+    keyof typeof allEnginePredictionByDirection
+  >) {
+    const b = allEnginePredictionByDirection[key];
     b.winRatePct = b.total > 0 ? (b.right / b.total) * 100 : 0;
   }
 
@@ -340,11 +373,13 @@ export async function runBacktest(
     predictionRight,
     predictionWrong,
     predictionWinRatePct,
+    predictionByDirection,
     predictionBySetup,
     allEnginePredictionTotal,
     allEnginePredictionRight,
     allEnginePredictionWrong,
     allEnginePredictionWinRatePct,
+    allEnginePredictionByDirection,
     allEnginePredictionBySetup,
     rows,
   };

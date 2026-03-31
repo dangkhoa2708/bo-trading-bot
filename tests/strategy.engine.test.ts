@@ -10,6 +10,10 @@ vi.mock("../src/config.js", async (importOriginal) => {
       relaxedSignalFilters: false,
       /** Keep strict exhaustion body in tests; live default is lower (0.55). */
       exhaustionRevBodyVsBaselineMult: 1.0,
+      /** DOWN uses its own mult in engine; align with legacy test expectations. */
+      exhaustionDownRevBodyVsBaselineMult: 1.0,
+      /** Mirror dump cases: avoid Exhaustion UP preempting (engine uses min(up,down) for history bar). */
+      exhaustionUpRunMin: 99,
       momentumAllowDojiInnerBars: false,
     },
   };
