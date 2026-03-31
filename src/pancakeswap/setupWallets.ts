@@ -3,11 +3,18 @@ import { normalizeBscPrivateKey } from "./predictionBet.js";
 import type { SetupType } from "../types.js";
 
 export type WalletSetup = "Exhaustion" | "Mirror";
+export type WalletKey = WalletSetup | "Shared";
 
 export type RoutedWallet = {
-  setup: WalletSetup | "Shared";
+  setup: WalletKey;
   privateKey: `0x${string}`;
 };
+
+export function walletDisplayName(key: WalletKey): string {
+  if (key === "Exhaustion") return "Exhaustion wallet";
+  if (key === "Mirror") return "Mirror wallet";
+  return "Shared wallet";
+}
 
 function normalizeOptional(raw: string): `0x${string}` | null {
   return normalizeBscPrivateKey(raw);

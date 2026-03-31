@@ -49,6 +49,7 @@ import { effectivePancakeBetWei } from "../pancakeswap/betSizing.js";
 import {
   getWalletForSetup,
   setupFromResultSetup,
+  walletDisplayName,
 } from "../pancakeswap/setupWallets.js";
 import {
   getPancakeBet,
@@ -130,7 +131,14 @@ async function runConfiguredPancakeBet(
         walletAddress: betResult.walletAddress,
       });
     }
-    return { outcome: "result", html: formatPancakeBetFollowUpHtml(betResult) };
+    return {
+      outcome: "result",
+      html: formatPancakeBetFollowUpHtml(betResult, {
+        ...(setup !== null ? { setup } : {}),
+        walletLabel: walletDisplayName(wallet.setup),
+        ...(betResult.ok ? { walletAddress: betResult.walletAddress } : {}),
+      }),
+    };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return {
@@ -582,6 +590,9 @@ export async function startTelegramCommandListener(): Promise<void> {
       await sendTelegramText(
         formatPancakeClaimTelegramHtml(row.epoch, res, {
           placementId: row.placementId,
+          ...(row.setup ? { setup: row.setup } : {}),
+          walletLabel: walletDisplayName(row.setup ?? "Shared"),
+          walletAddress: row.walletAddress,
         }),
         { parseMode: "HTML" },
       );

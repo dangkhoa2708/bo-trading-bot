@@ -7,7 +7,11 @@ import {
 } from "./predictionBet.js";
 import { effectivePancakeBetWei } from "./betSizing.js";
 import { registerPendingPancakeBet } from "./betTracker.js";
-import { getWalletForSetup, setupFromResultSetup } from "./setupWallets.js";
+import {
+  getWalletForSetup,
+  setupFromResultSetup,
+  walletDisplayName,
+} from "./setupWallets.js";
 
 export type AutoPlacementResult =
   | { outcome: "not_configured" }
@@ -58,7 +62,14 @@ export async function autoPlacePancakeBetForSignal(args: {
         walletAddress: betResult.walletAddress,
       });
     }
-    return { outcome: "result", html: formatPancakeBetFollowUpHtml(betResult) };
+    return {
+      outcome: "result",
+      html: formatPancakeBetFollowUpHtml(betResult, {
+        setup: args.setup,
+        walletLabel: walletDisplayName(wallet.setup),
+        ...(betResult.ok ? { walletAddress: betResult.walletAddress } : {}),
+      }),
+    };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return {

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { formatEther } from "viem";
 import { escapeHtml } from "../logging/verify.js";
+import { walletDisplayName } from "../pancakeswap/setupWallets.js";
 import { gmt7DateKey } from "../time/utils.js";
 import {
   PANCAKE_PLACEMENTS_FILE,
@@ -18,6 +19,28 @@ export type PancakePlacementAggregate = {
   sumClaimUsdt: number | null;
   sumProfitUsdt: number | null;
 };
+
+export function groupPlacementsBySetup(
+  rows: PancakePlacementRecord[],
+): Array<{
+  setup: "Exhaustion" | "Mirror" | "Shared" | "Other";
+  aggregate: PancakePlacementAggregate;
+}> {
+  const groups = new Map<string, PancakePlacementRecord[]>();
+  for (const row of rows) {
+    const key =
+      row.setup === "Exhaustion" || row.setup === "Mirror"
+        ? row.setup
+        : row.signalId === "MANUAL_PLACEMENT"
+          ? "Shared"
+          : "Other";
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  return [...groups.entries()].map(([setup, setupRows]) => ({
+    setup: setup as "Exhaustion" | "Mirror" | "Shared" | "Other",
+    aggregate: aggregatePancakePlacements(setupRows),
+  }));
+}
 
 export function countPlacementOutcomes(rows: PancakePlacementRecord[]): {
   won: number;
@@ -121,7 +144,7 @@ export function formatLinkedPlacementsDetailHtml(
   return placements
     .map(
       (pl) =>
-        `• 🥞 <code>${escapeHtml(pl.placementId.slice(0, 8))}…</code> ${escapeHtml(pl.outcome)} · P&amp;L <code>${escapeHtml(pl.profitBnb)}</code> BNB`,
+        `• 🥞 <code>${escapeHtml(pl.placementId.slice(0, 8))}…</code> ${escapeHtml(pl.outcome)} · ${escapeHtml(walletDisplayName((pl.setup ?? "Shared") as "Exhaustion" | "Mirror" | "Shared"))} · <code>${escapeHtml(pl.walletAddress.slice(0, 8))}…${escapeHtml(pl.walletAddress.slice(-4))}</code> · P&amp;L <code>${escapeHtml(pl.profitBnb)}</code> BNB`,
     )
     .join("\n");
 }

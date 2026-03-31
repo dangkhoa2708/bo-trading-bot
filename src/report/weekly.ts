@@ -13,6 +13,7 @@ import {
   buildPancakePlacementsShortSummaryHtmlLinesOrEmpty,
   filterPlacementsForSignalDetail,
   formatLinkedPlacementsDetailHtml,
+  groupPlacementsBySetup,
   loadPancakePlacementsSince,
   type PancakePlacementAggregate,
 } from "./pancakePlacementReport.js";
@@ -22,7 +23,7 @@ import {
   isFakeSignalPredictionRow,
   isFakeSignalSetup,
 } from "./reportFilters.js";
-import { readCachedWalletBalance } from "./walletBalance.js";
+import { readCachedWalletBalances } from "./walletBalance.js";
 
 type SignalRow = {
   signalId?: string;
@@ -387,15 +388,29 @@ export function buildWeeklyReportSummaryHtml(): string {
 }
 
 function buildWeeklyReportHeaderLinesHtml(d: WeeklyReportData): string[] {
-  const bal = readCachedWalletBalance();
+  const balances = readCachedWalletBalances();
+  const walletLines =
+    balances.length > 0
+      ? balances
+          .sort((a, b) => a.key.localeCompare(b.key))
+          .map(
+            (bal) =>
+              `• ${bal.label}: <code>${bal.balanceBnb}</code> BNB  <i>(wallet ${escapeHtml(bal.walletAddress.slice(0, 8))}…${escapeHtml(bal.walletAddress.slice(-4))}, updated ${bal.updatedAtGmt7})</i>`,
+          )
+      : ["• BNB: <code>—</code>  <i>(no wallet-balance cache yet)</i>"];
+  const perSetupPnl = groupPlacementsBySetup(d.pancake.rows)
+    .filter((g) => g.aggregate.count > 0)
+    .map(
+      (g) =>
+        `• ${g.setup}: <code>${g.aggregate.count}</code> settled · net <code>${formatEther(g.aggregate.totalProfitWei)}</code> BNB`,
+    );
   const base = [
     "📈 <b>Weekly Report</b> <i>(GMT+7)</i>",
     `🗓️ Window: <code>${d.windowLabel}</code>`,
     "",
-    "💰 <b>Wallet</b>",
-    bal
-      ? `• BNB: <code>${bal.balanceBnb}</code>  <i>(updated ${bal.updatedAtGmt7})</i>`
-      : "• BNB: <code>—</code>  <i>(no wallet-balance cache yet)</i>",
+    "💰 <b>Wallets</b>",
+    ...walletLines,
+    ...(perSetupPnl.length > 0 ? ["", "🪪 <b>Pancake by setup</b>", ...perSetupPnl] : []),
   ].filter((line) => line !== "");
   return [
     ...base,

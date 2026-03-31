@@ -15,7 +15,11 @@ import {
 } from "./betTracker.js";
 import { appendPancakePlacementSettlement } from "./placementLedger.js";
 import { updateWalletBalanceCache } from "./walletBalanceCache.js";
-import { getWalletForSetup, hasAnyConfiguredPancakeWallet } from "./setupWallets.js";
+import {
+  getWalletForSetup,
+  hasAnyConfiguredPancakeWallet,
+  walletDisplayName,
+} from "./setupWallets.js";
 
 const POLL_MS = 30_000;
 
@@ -46,11 +50,21 @@ function buildOutcomeHtml(args: {
   epoch: string;
   direction: string;
   valueBnb: string;
+  setup?: string;
+  walletLabel?: string;
+  walletAddress?: `0x${string}`;
   detail?: string;
 }): string {
   const lines = [
     args.headline,
     "",
+    ...(args.setup ? [`<b>Setup</b>: <code>${escapeHtml(args.setup)}</code>`] : []),
+    ...(args.walletLabel
+      ? [`<b>Wallet name</b>: <code>${escapeHtml(args.walletLabel)}</code>`]
+      : []),
+    ...(args.walletAddress
+      ? [`<b>Wallet</b>: <code>${escapeHtml(args.walletAddress)}</code>`]
+      : []),
     `<b>Epoch</b>: <code>${escapeHtml(args.epoch)}</code>`,
     `<b>Your side</b>: <code>${escapeHtml(args.direction)}</code>`,
     `<b>Stake</b>: <code>${escapeHtml(args.valueBnb)}</code> BNB`,
@@ -152,6 +166,9 @@ async function pollTick(send: SendTelegram): Promise<void> {
                 epoch: row.epoch,
                 direction: row.direction,
                 valueBnb,
+                setup: row.setup,
+                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletAddress: row.walletAddress,
                 detail: "<b>Auto-claim</b>: submitted and confirmed ✅",
               }),
               { parseMode: "HTML" },
@@ -159,6 +176,9 @@ async function pollTick(send: SendTelegram): Promise<void> {
             await send(
               formatPancakeClaimTelegramHtml(row.epoch, res, {
                 placementId: row.placementId,
+                ...(row.setup ? { setup: row.setup } : {}),
+                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletAddress: row.walletAddress,
               }),
               { parseMode: "HTML" },
             );
@@ -170,6 +190,9 @@ async function pollTick(send: SendTelegram): Promise<void> {
                 epoch: row.epoch,
                 direction: row.direction,
                 valueBnb,
+                setup: row.setup,
+                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletAddress: row.walletAddress,
                 detail:
                   "Auto-claim failed. Tap <b>Claim</b> to send <code>claim([epoch])</code> from your bot wallet.",
               }),
@@ -182,6 +205,9 @@ async function pollTick(send: SendTelegram): Promise<void> {
             await send(
               formatPancakeClaimTelegramHtml(row.epoch, res, {
                 placementId: row.placementId,
+                ...(row.setup ? { setup: row.setup } : {}),
+                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletAddress: row.walletAddress,
               }),
               { parseMode: "HTML" },
             );
@@ -211,6 +237,9 @@ async function pollTick(send: SendTelegram): Promise<void> {
                 epoch: row.epoch,
                 direction: row.direction,
                 valueBnb,
+                setup: row.setup,
+                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletAddress: row.walletAddress,
                 detail: "<b>Auto-claim</b>: refund submitted and confirmed ✅",
               }),
               { parseMode: "HTML" },
@@ -218,6 +247,9 @@ async function pollTick(send: SendTelegram): Promise<void> {
             await send(
               formatPancakeClaimTelegramHtml(row.epoch, res, {
                 placementId: row.placementId,
+                ...(row.setup ? { setup: row.setup } : {}),
+                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletAddress: row.walletAddress,
               }),
               { parseMode: "HTML" },
             );
@@ -228,6 +260,9 @@ async function pollTick(send: SendTelegram): Promise<void> {
                 epoch: row.epoch,
                 direction: row.direction,
                 valueBnb,
+                setup: row.setup,
+                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletAddress: row.walletAddress,
                 detail:
                   "Auto-claim failed. Tap <b>Claim</b> to recover your stake.",
               }),
@@ -240,6 +275,9 @@ async function pollTick(send: SendTelegram): Promise<void> {
             await send(
               formatPancakeClaimTelegramHtml(row.epoch, res, {
                 placementId: row.placementId,
+                ...(row.setup ? { setup: row.setup } : {}),
+                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletAddress: row.walletAddress,
               }),
               { parseMode: "HTML" },
             );
@@ -253,6 +291,9 @@ async function pollTick(send: SendTelegram): Promise<void> {
               epoch: row.epoch,
               direction: row.direction,
               valueBnb,
+              setup: row.setup,
+              walletLabel: walletDisplayName(row.setup ?? "Shared"),
+              walletAddress: row.walletAddress,
             }),
             { parseMode: "HTML" },
           );
@@ -271,6 +312,9 @@ async function pollTick(send: SendTelegram): Promise<void> {
               epoch: row.epoch,
               direction: row.direction,
               valueBnb,
+              setup: row.setup,
+              walletLabel: walletDisplayName(row.setup ?? "Shared"),
+              walletAddress: row.walletAddress,
               detail: "<i>Lock price equals close price — no winner payout.</i>",
             }),
             { parseMode: "HTML" },

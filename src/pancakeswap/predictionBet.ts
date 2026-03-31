@@ -430,13 +430,30 @@ const BSCSCAN_TX = "https://bscscan.com/tx/";
 export function formatPancakeClaimTelegramHtml(
   epochStr: string,
   res: PancakeClaimResult,
-  extra?: { placementId?: string },
+  extra?: {
+    placementId?: string;
+    setup?: "Exhaustion" | "Mirror";
+    walletLabel?: string;
+    walletAddress?: `0x${string}`;
+  },
 ): string {
   const head = "📬 <b>Pancake claim — status</b>";
   const epochLine = `<b>Epoch</b>: <code>${escapeHtml(epochStr)}</code>`;
   const placementLine =
     extra?.placementId !== undefined
       ? `<b>Placement</b>: <code>${escapeHtml(extra.placementId)}</code>`
+      : null;
+  const setupLine =
+    extra?.setup !== undefined
+      ? `<b>Setup</b>: <code>${escapeHtml(extra.setup)}</code>`
+      : null;
+  const walletLabelLine =
+    extra?.walletLabel !== undefined
+      ? `<b>Wallet name</b>: <code>${escapeHtml(extra.walletLabel)}</code>`
+      : null;
+  const walletLine =
+    extra?.walletAddress !== undefined
+      ? `<b>Wallet</b>: <code>${escapeHtml(extra.walletAddress)}</code>`
       : null;
   if (res.ok) {
     const txUrl = `${BSCSCAN_TX}${res.txHash}`;
@@ -455,7 +472,8 @@ export function formatPancakeClaimTelegramHtml(
       ledgerLine,
       claimLine,
       "",
-      ...(placementLine ? [placementLine, epochLine] : [epochLine]),
+      ...([placementLine, setupLine, walletLabelLine, walletLine].filter(Boolean) as string[]),
+      ...(placementLine || setupLine || walletLabelLine || walletLine ? [epochLine] : [epochLine]),
       `<b>Block</b>: <code>${escapeHtml(res.blockNumber.toString())}</code>`,
       `<b>Gas used</b>: <code>${escapeHtml(res.gasUsed.toString())}</code>`,
       `<b>Tx</b>: <a href="${escapeHtml(txUrl)}">${escapeHtml(res.txHash)}</a>`,
@@ -468,7 +486,8 @@ export function formatPancakeClaimTelegramHtml(
       "",
       "❌ <b>Transaction</b>: <b>reverted</b> (mined, execution failed)",
       "",
-      ...(placementLine ? [placementLine, ""] : []),
+      ...([placementLine, setupLine, walletLabelLine, walletLine].filter(Boolean) as string[]),
+      ...([placementLine, setupLine, walletLabelLine, walletLine].some(Boolean) ? [""] : []),
       epochLine,
       `<i>${escapeHtml(res.message)}</i>`,
       "",
@@ -482,7 +501,8 @@ export function formatPancakeClaimTelegramHtml(
       "",
       "❌ <b>Claim</b>: incomplete",
       "",
-      ...(placementLine ? [placementLine, ""] : []),
+      ...([placementLine, setupLine, walletLabelLine, walletLine].filter(Boolean) as string[]),
+      ...([placementLine, setupLine, walletLabelLine, walletLine].some(Boolean) ? [""] : []),
       epochLine,
       `<i>${escapeHtml(res.message)}</i>`,
       "",
@@ -494,17 +514,33 @@ export function formatPancakeClaimTelegramHtml(
     "",
     "❌ <b>Claim</b>: no transaction broadcast",
     "",
-    ...(placementLine ? [placementLine, ""] : []),
+    ...([placementLine, setupLine, walletLabelLine, walletLine].filter(Boolean) as string[]),
+    ...([placementLine, setupLine, walletLabelLine, walletLine].some(Boolean) ? [""] : []),
     epochLine,
     `<i>${escapeHtml(res.message)}</i>`,
   ].join("\n");
 }
 
-export function formatPancakeBetFollowUpHtml(r: PancakeBetResult): string {
+export function formatPancakeBetFollowUpHtml(
+  r: PancakeBetResult,
+  extra?: {
+    setup?: "Exhaustion" | "Mirror";
+    walletLabel?: string;
+    walletAddress?: `0x${string}`;
+  },
+): string {
   if (!r.ok) {
     return [
       "❌ <b>Pancake bet failed</b>",
       "",
+      ...(extra?.setup ? [`<b>Setup</b>: <code>${escapeHtml(extra.setup)}</code>`] : []),
+      ...(extra?.walletLabel
+        ? [`<b>Wallet name</b>: <code>${escapeHtml(extra.walletLabel)}</code>`]
+        : []),
+      ...(extra?.walletAddress
+        ? [`<b>Wallet</b>: <code>${escapeHtml(extra.walletAddress)}</code>`]
+        : []),
+      ...(extra?.setup || extra?.walletLabel || extra?.walletAddress ? [""] : []),
       `<i>Reason:</i> <code>${escapeHtml(r.message)}</code>`,
     ].join("\n");
   }
@@ -513,6 +549,13 @@ export function formatPancakeBetFollowUpHtml(r: PancakeBetResult): string {
     "✅ <b>Bet placed successfully</b>",
     "",
     "🥞 Your Pancake BNB prediction is on-chain.",
+    ...(extra?.setup ? [`<b>Setup</b>: <code>${escapeHtml(extra.setup)}</code>`] : []),
+    ...(extra?.walletLabel
+      ? [`<b>Wallet name</b>: <code>${escapeHtml(extra.walletLabel)}</code>`]
+      : []),
+    ...(extra?.walletAddress
+      ? [`<b>Wallet</b>: <code>${escapeHtml(extra.walletAddress)}</code>`]
+      : []),
     `<i>Placed on live <code>currentEpoch</code> <code>${escapeHtml(r.epoch.toString())}</code> (open betting window at chain time; re-checked before submit).</i>`,
     `<b>Side</b>: <code>${escapeHtml(r.direction)}</code> <i>(bull / bear)</i>`,
     `<b>Epoch</b>: <code>${escapeHtml(r.epoch.toString())}</code>`,
