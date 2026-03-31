@@ -174,7 +174,8 @@ let commandListenerStarted = false;
 /** Plain text (no parse_mode) — shows asterisks literally in Telegram. */
 export const SIGNAL_REMINDER_ALERT_TEXT = "**Signal Alert** 🔔";
 
-const SIGNAL_REMINDER_COUNT = 5;
+// Auto-entry/auto-claim already produces multiple Telegram messages; keep pings disabled.
+const SIGNAL_REMINDER_COUNT = 0;
 const SIGNAL_REMINDER_GAP_MS = 1000;
 
 function sleep(ms: number): Promise<void> {
@@ -192,6 +193,7 @@ function getBot(): Telegraf {
  */
 export async function sendSignalReminderPings(): Promise<void> {
   if (!config.telegramBotToken || !config.telegramChatId) return;
+  if (SIGNAL_REMINDER_COUNT <= 0) return;
   for (let i = 0; i < SIGNAL_REMINDER_COUNT; i++) {
     if (i > 0 && !config.dryRun) await sleep(SIGNAL_REMINDER_GAP_MS);
     try {
