@@ -103,6 +103,10 @@ export function buildBacktestReportHtml(r: BacktestResult): string {
     d.Other.total > 0
       ? `• Other: <code>${d.Other.total}</code> (✅ <code>${d.Other.right}</code> / ❌ <code>${d.Other.wrong}</code>) — <code>${d.Other.winRatePct.toFixed(1)}%</code>`
       : "• Other: <code>0</code>",
+    "",
+    "🪪 <b>Split lanes</b>",
+    `• Exhaustion lane: <code>${d.Exhaustion.total}</code> emits — <code>${d.Exhaustion.winRatePct.toFixed(1)}%</code>`,
+    `• Mirror lane: <code>${d.Mirror.total}</code> emits — <code>${d.Mirror.winRatePct.toFixed(1)}%</code>`,
   ].join("\n");
 
   if (r.rows.length === 0) {

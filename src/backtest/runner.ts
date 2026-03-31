@@ -23,8 +23,7 @@ export type BacktestOptions = {
   days?: number;
   /**
    * Engine setups that count as “live-eligible” for raw signal counting and emission replay.
-   * Default: Exhaustion-only (historical Telegram /backtest behavior).
-   * Use `["Exhaustion", "Mirror"]` to match `main.ts` when both setups emit.
+   * Default: Exhaustion + Mirror (matches current live `main.ts` split lanes).
    */
   eligibleSetups?: LiveEligibleSetup[];
 };
@@ -132,7 +131,7 @@ export async function runBacktest(
   const eligibleSetups: LiveEligibleSetup[] =
     options.eligibleSetups && options.eligibleSetups.length > 0
       ? options.eligibleSetups
-      : ["Exhaustion"];
+      : ["Exhaustion", "Mirror"];
   const eligibleSetupSet = new Set<string>(eligibleSetups);
 
   const now = Date.now();

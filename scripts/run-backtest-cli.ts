@@ -1,8 +1,8 @@
 /**
  * One-shot backtest for local/CI:
  * - `npx tsx scripts/run-backtest-cli.ts [days]`
- * - `npx tsx scripts/run-backtest-cli.ts [days] both` — Exhaustion + Mirror (matches live `main.ts`)
- * Default: 30 days (max 90, same as Telegram /backtest).
+ * - `npx tsx scripts/run-backtest-cli.ts [days] exhaustion` — Exhaustion-only diagnostic
+ * Default: 30 days (max 90, same as Telegram /backtest), using Exhaustion + Mirror split lanes.
  */
 import { runBacktest } from "../src/backtest/runner.js";
 import { buildBacktestReportHtml } from "../src/report/backtest.js";
@@ -25,9 +25,9 @@ const days =
 
 const mode = process.argv[3]?.toLowerCase();
 const eligibleSetups =
-  mode === "both" || mode === "exhaustion+mirror"
-    ? (["Exhaustion", "Mirror"] as const)
-    : (["Exhaustion"] as const);
+  mode === "exhaustion"
+    ? (["Exhaustion"] as const)
+    : (["Exhaustion", "Mirror"] as const);
 
 const r = await runBacktest({ days, eligibleSetups: [...eligibleSetups] });
 if (!r.ok) {

@@ -517,12 +517,12 @@ export async function startTelegramCommandListener(): Promise<void> {
     }
     const modeToken = tokens.find((t) => {
       const x = t.toLowerCase();
-      return x === "both" || x === "exhaustion+mirror";
+      return x === "exhaustion";
     });
     const eligibleSetups =
       modeToken !== undefined
-        ? (["Exhaustion", "Mirror"] as const)
-        : (["Exhaustion"] as const);
+        ? (["Exhaustion"] as const)
+        : (["Exhaustion", "Mirror"] as const);
     const r = await runBacktest({ days, eligibleSetups: [...eligibleSetups] });
     if (!r.ok) {
       await ctx.reply(`Backtest failed: ${r.message}`);
