@@ -22,6 +22,7 @@ import {
 } from "./setupWallets.js";
 
 const POLL_MS = 30_000;
+const AUTO_CLAIM_DELAY_MS = 20_000;
 
 type SendTelegram = (
   text: string,
@@ -36,6 +37,10 @@ type SendTelegram = (
 ) => Promise<void>;
 
 let started = false;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function claimReplyMarkup(placementId: string) {
   return {
@@ -154,6 +159,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
             epoch,
             wallet: row.walletAddress,
           });
+          await sleep(AUTO_CLAIM_DELAY_MS);
           const res = await claimPancakePredictionEpochs({
             rpcUrl: config.bscRpcUrl,
             privateKey: wallet.privateKey,
@@ -178,7 +184,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
                 setup: row.setup,
                 walletLabel: walletDisplayName(row.setup ?? "Shared"),
                 walletAddress: row.walletAddress,
-                detail: "<b>Auto-claim</b>: submitted and confirmed ✅",
+                detail: "<b>Auto-claim</b>: waited 20s after round finish, then submitted and confirmed ✅",
               }),
               { parseMode: "HTML" },
             );
@@ -225,6 +231,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
         }
         case "refund_available": {
           const est = BigInt(row.valueWei);
+          await sleep(AUTO_CLAIM_DELAY_MS);
           const res = await claimPancakePredictionEpochs({
             rpcUrl: config.bscRpcUrl,
             privateKey: wallet.privateKey,
@@ -249,7 +256,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
                 setup: row.setup,
                 walletLabel: walletDisplayName(row.setup ?? "Shared"),
                 walletAddress: row.walletAddress,
-                detail: "<b>Auto-claim</b>: refund submitted and confirmed ✅",
+                detail: "<b>Auto-claim</b>: waited 20s after round finish, then refund submitted and confirmed ✅",
               }),
               { parseMode: "HTML" },
             );
