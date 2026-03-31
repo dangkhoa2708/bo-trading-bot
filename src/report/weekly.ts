@@ -10,7 +10,7 @@ import {
 } from "./predictionStats.js";
 import {
   buildPancakePlacementsDetailsHtml,
-  buildPancakePlacementsSummaryHtmlLinesOrEmpty,
+  buildPancakePlacementsShortSummaryHtmlLinesOrEmpty,
   filterPlacementsForSignalDetail,
   formatLinkedPlacementsDetailHtml,
   loadPancakePlacementsSince,
@@ -22,6 +22,7 @@ import {
   isFakeSignalPredictionRow,
   isFakeSignalSetup,
 } from "./reportFilters.js";
+import { readCachedWalletBalance } from "./walletBalance.js";
 
 type SignalRow = {
   signalId?: string;
@@ -386,51 +387,21 @@ export function buildWeeklyReportSummaryHtml(): string {
 }
 
 function buildWeeklyReportHeaderLinesHtml(d: WeeklyReportData): string[] {
-  const bot = d.botPrediction;
-  const my = d.myPicks;
-  const mb = my.total > 0 ? my.winRatePct.toFixed(1) : "—";
+  const bal = readCachedWalletBalance();
   const base = [
     "📈 <b>Weekly Report</b> <i>(GMT+7)</i>",
     `🗓️ Window: <code>${d.windowLabel}</code>`,
     "",
-    "📡 <b>Signals</b>",
-    `• Total: <code>${d.signalTotal}</code>`,
-    `• UP / DOWN: <code>${d.up} / ${d.down}</code>`,
-    `• Setups: <code>${d.setups}</code>`,
-    "",
-    "🧮 <b>Prediction resolution</b>",
-    `• Ignored <i>(no on-chain bet)</i>: <code>${d.ignoredNoBetCount}</code>`,
-    `• With Pancake bet <i>(outcome on-chain)</i>: <code>${d.placementResolvedCount}</code>`,
-    "",
-    "🤖 <b>Bot prediction</b> <i>(next candle vs bot direction)</i>",
-    `• Total: <code>${bot.total}</code>`,
-    `• ✅ Right: <code>${bot.right}</code>`,
-    `• ❌ Wrong: <code>${bot.wrong}</code>`,
-    `• 🏆 Win rate: <code>${bot.winRatePct.toFixed(1)}%</code>`,
-    "",
-    "🧩 <b>Bot — by setup</b>",
-    `• Momentum: <code>${bot.bySetup.Momentum.total}</code> (✅ <code>${bot.bySetup.Momentum.right}</code> / ❌ <code>${bot.bySetup.Momentum.wrong}</code>) — <code>${bot.bySetup.Momentum.winRatePct.toFixed(1)}%</code>`,
-    `• Exhaustion: <code>${bot.bySetup.Exhaustion.total}</code> (✅ <code>${bot.bySetup.Exhaustion.right}</code> / ❌ <code>${bot.bySetup.Exhaustion.wrong}</code>) — <code>${bot.bySetup.Exhaustion.winRatePct.toFixed(1)}%</code>`,
-    `• Mirror: <code>${bot.bySetup.Mirror.total}</code> (✅ <code>${bot.bySetup.Mirror.right}</code> / ❌ <code>${bot.bySetup.Mirror.wrong}</code>) — <code>${bot.bySetup.Mirror.winRatePct.toFixed(1)}%</code>`,
-    bot.bySetup.Other.total > 0
-      ? `• Other: <code>${bot.bySetup.Other.total}</code> (✅ <code>${bot.bySetup.Other.right}</code> / ❌ <code>${bot.bySetup.Other.wrong}</code>) — <code>${bot.bySetup.Other.winRatePct.toFixed(1)}%</code>`
-      : "",
-    "",
-    "🧑‍💻 <b>My picks</b> <i>(Telegram pick vs next close, when recorded)</i>",
-    `• Total: <code>${my.total}</code>`,
-    `• ✅ Right: <code>${my.right}</code>`,
-    `• ❌ Wrong: <code>${my.wrong}</code>`,
-    `• 🏆 Win rate: <code>${mb}%</code>`,
-    "",
-    "🧩 <b>My picks — by setup</b>",
-    `• Momentum: <code>${my.bySetup.Momentum.total}</code> (✅ <code>${my.bySetup.Momentum.right}</code> / ❌ <code>${my.bySetup.Momentum.wrong}</code>) — <code>${my.bySetup.Momentum.total > 0 ? my.bySetup.Momentum.winRatePct.toFixed(1) : "—"}%</code>`,
-    `• Exhaustion: <code>${my.bySetup.Exhaustion.total}</code> (✅ <code>${my.bySetup.Exhaustion.right}</code> / ❌ <code>${my.bySetup.Exhaustion.wrong}</code>) — <code>${my.bySetup.Exhaustion.total > 0 ? my.bySetup.Exhaustion.winRatePct.toFixed(1) : "—"}%</code>`,
-    `• Mirror: <code>${my.bySetup.Mirror.total}</code> (✅ <code>${my.bySetup.Mirror.right}</code> / ❌ <code>${my.bySetup.Mirror.wrong}</code>) — <code>${my.bySetup.Mirror.total > 0 ? my.bySetup.Mirror.winRatePct.toFixed(1) : "—"}%</code>`,
-    my.bySetup.Other.total > 0
-      ? `• Other: <code>${my.bySetup.Other.total}</code> (✅ <code>${my.bySetup.Other.right}</code> / ❌ <code>${my.bySetup.Other.wrong}</code>) — <code>${my.bySetup.Other.winRatePct.toFixed(1)}%</code>`
-      : "",
+    "💰 <b>Wallet</b>",
+    bal
+      ? `• BNB: <code>${bal.balanceBnb}</code>  <i>(updated ${bal.updatedAtGmt7})</i>`
+      : "• BNB: <code>—</code>  <i>(no wallet-balance cache yet)</i>",
   ].filter((line) => line !== "");
-  return [...base, ...buildPancakePlacementsSummaryHtmlLinesOrEmpty(d.pancake, "weekly")];
+  return [
+    ...base,
+    "",
+    ...buildPancakePlacementsShortSummaryHtmlLinesOrEmpty(d.pancake, "weekly"),
+  ];
 }
 
 function buildWeeklyReportDetailsHtmlForData(d: WeeklyReportData): string {

@@ -62,8 +62,8 @@ type ConfiguredPancakeBetRun =
   | { outcome: "dryrun"; plainText: string }
   | { outcome: "result"; html: string };
 
-/** Default stake for <code>/placement</code> only (live testing; pre-prediction taps use env). */
-const PLACEMENT_TEST_BET_WEI = parseEther("0.0015");
+/** Default stake for <code>/placement</code> only (live testing). */
+const PLACEMENT_TEST_BET_WEI = parseEther("0.005");
 
 /** Shared by UP/DOWN pick callback and <code>/placement</code>. */
 async function runConfiguredPancakeBet(
@@ -78,7 +78,7 @@ async function runConfiguredPancakeBet(
   const betWei = options?.betWeiOverride ?? config.pancakePredictionBetWei;
   if (betWei > 0n && pk === null && !config.dryRun) {
     console.warn(
-      "[telegram] PANCAKE_PREDICTION_BET_BNB set but BSC_WALLET_PRIVATE_KEY missing or invalid",
+      "[telegram] Pancake bet enabled but BSC_WALLET_PRIVATE_KEY missing or invalid",
     );
   }
   if (pk === null || betWei === 0n) return { outcome: "not_configured" };
@@ -338,7 +338,7 @@ export async function startTelegramCommandListener(): Promise<void> {
           "• <code>/fakesignal down</code>",
           "",
           "Fetches the <b>last closed</b> kline, logs a row to <code>signals.jsonl</code>, queues the same pending prediction the bot uses for real signals (picked up on the <b>next</b> WebSocket candle close), sends this chat the pre-prediction message + UP/DOWN + reminder pings.",
-          "If you tap UP/DOWN, Pancake placement uses <b>0.0015 BNB</b> (same as <code>/placement</code>), not <code>PANCAKE_PREDICTION_BET_BNB</code>.",
+          "If you tap UP/DOWN, Pancake placement uses <b>0.0015 BNB</b> (same as <code>/placement</code>).",
           "<i>Avoid using while a real signal is already waiting for the next candle.</i>",
         ].join("\n"),
         { parse_mode: "HTML" },
@@ -440,7 +440,7 @@ export async function startTelegramCommandListener(): Promise<void> {
           "• <code>/placement up</code> → <code>betBull</code> (same as tap UP)",
           "• <code>/placement down</code> → <code>betBear</code> (same as tap DOWN)",
           "",
-          "Needs <code>BSC_WALLET_PRIVATE_KEY</code> only — test stake is fixed at <b>0.0015 BNB</b> (not <code>PANCAKE_PREDICTION_BET_BNB</code>).",
+          "Needs <code>BSC_WALLET_PRIVATE_KEY</code> only — test stake is fixed at <b>0.0015 BNB</b>.",
           "Only bets if <code>currentEpoch</code> is <b>open for betting</b> right now. If locked, you get ❌ — we do <b>not</b> wait for the next round.",
           "Reply: ✅ success or ❌ failure (same as after a pre-prediction tap).",
         ].join("\n"),
@@ -461,7 +461,7 @@ export async function startTelegramCommandListener(): Promise<void> {
           "⚠️ <b>Placement test</b>",
           "",
           "Set <code>BSC_WALLET_PRIVATE_KEY</code> in <code>.env</code>.",
-          "Stake for this command is always <b>0.0015 BNB</b> — you do not need <code>PANCAKE_PREDICTION_BET_BNB</code>.",
+          "Stake for this command is always <b>0.0015 BNB</b>.",
         ].join("\n"),
         { parse_mode: "HTML" },
       );
@@ -583,22 +583,8 @@ export async function startTelegramCommandListener(): Promise<void> {
         return;
       }
       await ctx.answerCbQuery(`Recorded your pick: ${dir}`);
-
-      const pickLink = getPlacementLinkForOpenTime(fromOpenTime);
-      const runBet = await runConfiguredPancakeBet(dir, {
-        betWeiOverride: pickLink?.betWeiOverride,
-        placementContext: { kind: "signal_pick", fromOpenTime },
-      });
-      if (runBet.outcome === "not_configured") return;
-      if (runBet.outcome === "dryrun") {
-        await sendTelegramText(runBet.plainText);
-        return;
-      }
-      try {
-        await sendTelegramText(runBet.html, { parseMode: "HTML" });
-      } catch (sendErr) {
-        console.error("[telegram] could not send bet outcome to chat", sendErr);
-      }
+      // Auto-placement is handled by the strategy loop (Exhaustion-only mode).
+      // Keep pick buttons only for scoring; avoid double-betting on tap.
       return;
     }
 

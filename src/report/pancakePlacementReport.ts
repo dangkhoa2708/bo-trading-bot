@@ -19,6 +19,22 @@ export type PancakePlacementAggregate = {
   sumProfitUsdt: number | null;
 };
 
+export function countPlacementOutcomes(rows: PancakePlacementRecord[]): {
+  won: number;
+  lost: number;
+  other: number;
+} {
+  let won = 0;
+  let lost = 0;
+  let other = 0;
+  for (const r of rows) {
+    if (r.outcome === "won") won++;
+    else if (r.outcome === "lost") lost++;
+    else other++;
+  }
+  return { won, lost, other };
+}
+
 function readAllPlacements(): PancakePlacementRecord[] {
   if (!fs.existsSync(PANCAKE_PLACEMENTS_FILE)) return [];
   const raw = fs.readFileSync(PANCAKE_PLACEMENTS_FILE, "utf8");
@@ -162,6 +178,35 @@ export function buildPancakePlacementsSummaryHtmlLinesOrEmpty(
     "🥞 <b>On-chain P&amp;L</b> <i>(Pancake — settled only)</i>",
     `• <b>Net P&amp;L</b>: — <i>(no settled placements in ${scope})</i>`,
     "• <i>Totals come from <code>logs/pancake-placements.jsonl</code> when the outcome poller records each settlement. Pending bets are not included.</i>",
+  ];
+}
+
+/** Very short HTML summary for Telegram reports. */
+export function buildPancakePlacementsShortSummaryHtmlLinesOrEmpty(
+  aggr: PancakePlacementAggregate,
+  window: "daily" | "weekly",
+): string[] {
+  const scope =
+    window === "daily"
+      ? "today <i>(GMT+7)</i>"
+      : "last 7d <i>(GMT+7)</i>";
+  const o = countPlacementOutcomes(aggr.rows);
+  if (aggr.count === 0) {
+    return [
+      "🥞 <b>Placements</b>",
+      `• W/L: <code>0/0</code>  (settled: <code>0</code>, ${scope})`,
+      "🥞 <b>P&amp;L</b>",
+      "• Net: <code>—</code> <i>(no settled rows)</i>",
+    ];
+  }
+  const profitBnb = formatEther(aggr.totalProfitWei);
+  const profitU = fmtUsd(aggr.sumProfitUsdt);
+  const otherNote = o.other > 0 ? ` · other <code>${o.other}</code>` : "";
+  return [
+    "🥞 <b>Placements</b>",
+    `• W/L: <code>${o.won}/${o.lost}</code>${otherNote}  (settled: <code>${aggr.count}</code>, ${scope})`,
+    "🥞 <b>P&amp;L</b>",
+    `• Net: <code>${escapeHtml(profitBnb)}</code> BNB <i>(≈ ${escapeHtml(profitU)} USDT)</i>`,
   ];
 }
 

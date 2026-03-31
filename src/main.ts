@@ -25,6 +25,7 @@ import { hasRecordedPancakeBetForPrediction } from "./pancakeswap/hasBetForPredi
 import { pullFakeSignalIfQueued } from "./prediction/injectedFakeSignal.js";
 import { logRuntime } from "./logging/runtime.js";
 import { startPancakeOutcomePoller } from "./pancakeswap/outcomePoller.js";
+import { autoPlacePancakeBetForSignal } from "./pancakeswap/autoPlacement.js";
 import {
   sendSignalReminderPings,
   sendTelegramText,
@@ -143,7 +144,12 @@ async function main(): Promise<void> {
     // Temporarily disable Telegram spam for candle-by-candle logs.
     await logRuntime(formatVerifyLog(c, result), "log");
 
-    if (decision.emit && result.signal !== "NONE") {
+    // Mode: emit Exhaustion signals only.
+    if (
+      decision.emit &&
+      result.signal !== "NONE" &&
+      result.setup === "Exhaustion"
+    ) {
       const predictionId = randomUUID();
       const signalId = `${c.openTime}-${result.signal}-${result.setup}`;
       const charts = signalChartLinks(config.symbol, config.interval);
@@ -197,6 +203,35 @@ async function main(): Promise<void> {
         setup: result.setup,
         reason: result.reason,
       });
+
+      // Auto placement for Exhaustion signals (no manual pick required).
+      const placed = await autoPlacePancakeBetForSignal({
+        signalId,
+        predictionId,
+        direction: result.signal,
+      });
+      if (placed.outcome === "dryrun") {
+        await logRuntime(`[pancake-auto] ${placed.plainText}`, "log", {
+          text: `<b>Pancake auto-placement</b> <i>(dry-run)</i>\n<code>${placed.plainText}</code>`,
+          parseMode: "HTML",
+        });
+      } else if (placed.outcome === "not_configured") {
+        await logRuntime("[pancake-auto] not configured", "warn", {
+          text: [
+            "⚠️ <b>Pancake auto-placement skipped</b>",
+            "",
+            "Missing <code>BSC_WALLET_PRIVATE_KEY</code> (or stake is disabled).",
+            "Stake is configured in <code>src/config.ts</code> (default: <code>0.05</code> BNB).",
+          ].join("\n"),
+          parseMode: "HTML",
+        });
+      } else if (placed.outcome === "result") {
+        await logRuntime(
+          `[pancake-auto] signal=${signalId} direction=${result.signal}`,
+          "log",
+          { text: placed.html, parseMode: "HTML" },
+        );
+      }
     } else if (!decision.emit && result.signal !== "NONE") {
       await logRuntime(
         `[skip] ${new Date(c.openTime).toISOString()} ${result.signal} — ${decision.reason}`,

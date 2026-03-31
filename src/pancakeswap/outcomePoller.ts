@@ -2,7 +2,9 @@ import { formatEther } from "viem";
 import { config } from "../config.js";
 import { escapeHtml } from "../logging/verify.js";
 import {
+  claimPancakePredictionEpochs,
   estimateClaimPayoutWei,
+  formatPancakeClaimTelegramHtml,
   getPancakeRoundOutcome,
   normalizeBscPrivateKey,
   readPancakeLedgerClaimed,
@@ -13,6 +15,7 @@ import {
   removePancakeBet,
 } from "./betTracker.js";
 import { appendPancakePlacementSettlement } from "./placementLedger.js";
+import { updateWalletBalanceCache } from "./walletBalanceCache.js";
 
 const POLL_MS = 30_000;
 
@@ -59,6 +62,9 @@ function buildOutcomeHtml(args: {
 async function pollTick(send: SendTelegram): Promise<void> {
   const pk = normalizeBscPrivateKey(config.bscWalletPrivateKey);
   if (config.dryRun || pk === null) return;
+
+  // Refresh wallet balance cache for reports (best effort; non-blocking for outcomes).
+  void updateWalletBalanceCache({ rpcUrl: config.bscRpcUrl, privateKey: pk });
 
   const rows = listTrackedPancakeBets();
   for (const row of rows) {
@@ -108,37 +114,119 @@ async function pollTick(send: SendTelegram): Promise<void> {
             epoch,
             wallet: row.walletAddress,
           });
-          await send(
-            buildOutcomeHtml({
-              headline: "🎉 <b>Pancake round finished — you won</b>",
-              epoch: row.epoch,
-              direction: row.direction,
-              valueBnb,
-              detail: "Tap <b>Claim</b> to send <code>claim([epoch])</code> from your bot wallet.",
-            }),
-            { parseMode: "HTML", replyMarkup: claimReplyMarkup(row.epoch) },
-          );
-          markPancakeBetAwaitingClaim(row.epoch, {
-            estimatedClaimWei: est.toString(),
-            awaitingOutcome: "won",
+          const res = await claimPancakePredictionEpochs({
+            rpcUrl: config.bscRpcUrl,
+            privateKey: pk,
+            epochs: [epoch],
           });
+          if (res.ok) {
+            let claimWei = res.claimAmountWei;
+            if (claimWei === 0n) claimWei = est;
+            await appendPancakePlacementSettlement({
+              row,
+              outcome: "won",
+              claimWei,
+              claimTxHash: res.txHash,
+            });
+            removePancakeBet(row.epoch);
+            await send(
+              buildOutcomeHtml({
+                headline: "🎉 <b>Pancake round finished — you won</b>",
+                epoch: row.epoch,
+                direction: row.direction,
+                valueBnb,
+                detail: "<b>Auto-claim</b>: submitted and confirmed ✅",
+              }),
+              { parseMode: "HTML" },
+            );
+            await send(
+              formatPancakeClaimTelegramHtml(row.epoch, res, {
+                placementId: row.placementId,
+              }),
+              { parseMode: "HTML" },
+            );
+          } else {
+            // Fall back to manual claim button so you can retry.
+            await send(
+              buildOutcomeHtml({
+                headline: "🎉 <b>Pancake round finished — you won</b>",
+                epoch: row.epoch,
+                direction: row.direction,
+                valueBnb,
+                detail:
+                  "Auto-claim failed. Tap <b>Claim</b> to send <code>claim([epoch])</code> from your bot wallet.",
+              }),
+              { parseMode: "HTML", replyMarkup: claimReplyMarkup(row.epoch) },
+            );
+            markPancakeBetAwaitingClaim(row.epoch, {
+              estimatedClaimWei: est.toString(),
+              awaitingOutcome: "won",
+            });
+            await send(
+              formatPancakeClaimTelegramHtml(row.epoch, res, {
+                placementId: row.placementId,
+              }),
+              { parseMode: "HTML" },
+            );
+          }
           break;
         }
         case "refund_available": {
-          await send(
-            buildOutcomeHtml({
-              headline: "🔁 <b>Pancake round — refund available</b>",
-              epoch: row.epoch,
-              direction: row.direction,
-              valueBnb,
-              detail: "Oracle did not finalize this round in time. Tap <b>Claim</b> to recover your stake.",
-            }),
-            { parseMode: "HTML", replyMarkup: claimReplyMarkup(row.epoch) },
-          );
-          markPancakeBetAwaitingClaim(row.epoch, {
-            estimatedClaimWei: row.valueWei,
-            awaitingOutcome: "refund",
+          const est = BigInt(row.valueWei);
+          const res = await claimPancakePredictionEpochs({
+            rpcUrl: config.bscRpcUrl,
+            privateKey: pk,
+            epochs: [epoch],
           });
+          if (res.ok) {
+            let claimWei = res.claimAmountWei;
+            if (claimWei === 0n) claimWei = est;
+            await appendPancakePlacementSettlement({
+              row,
+              outcome: "refund",
+              claimWei,
+              claimTxHash: res.txHash,
+            });
+            removePancakeBet(row.epoch);
+            await send(
+              buildOutcomeHtml({
+                headline: "🔁 <b>Pancake round — refund available</b>",
+                epoch: row.epoch,
+                direction: row.direction,
+                valueBnb,
+                detail: "<b>Auto-claim</b>: refund submitted and confirmed ✅",
+              }),
+              { parseMode: "HTML" },
+            );
+            await send(
+              formatPancakeClaimTelegramHtml(row.epoch, res, {
+                placementId: row.placementId,
+              }),
+              { parseMode: "HTML" },
+            );
+          } else {
+            await send(
+              buildOutcomeHtml({
+                headline: "🔁 <b>Pancake round — refund available</b>",
+                epoch: row.epoch,
+                direction: row.direction,
+                valueBnb,
+                detail:
+                  "Auto-claim failed. Tap <b>Claim</b> to recover your stake.",
+              }),
+              { parseMode: "HTML", replyMarkup: claimReplyMarkup(row.epoch) },
+            );
+            markPancakeBetAwaitingClaim(row.epoch, {
+              estimatedClaimWei: row.valueWei,
+              awaitingOutcome: "refund",
+            });
+            await send(
+              formatPancakeClaimTelegramHtml(row.epoch, res, {
+                placementId: row.placementId,
+              }),
+              { parseMode: "HTML" },
+            );
+          }
           break;
         }
         case "lost": {
