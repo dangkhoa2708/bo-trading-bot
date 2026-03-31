@@ -144,6 +144,7 @@ Evaluation order is fixed:
   - The signal message body also includes one **Pancake BNB prediction** line (on-chain epoch, phase, and time to lock/close when applicable), fetched at send time alongside the buttons
   - Telegram `/livecountdown` reads the same on-chain round timestamps as that page (`PancakePredictionV2` on BSC); optional env `BSC_RPC_URL` overrides the default JSON-RPC endpoint
 - Every emitted signal is appended to `logs/signals.jsonl` with timestamp and metadata
+- Telegram `/backtest` defaults to **Exhaustion-only** historical replay for compatibility. Add `both` (for example `/backtest 30 both`) to replay **Exhaustion + Mirror**, which matches current live `main.ts` emit behavior.
 
 ## Risk Rules (Operational Policy)
 
