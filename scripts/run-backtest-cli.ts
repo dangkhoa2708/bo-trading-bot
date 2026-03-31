@@ -1,5 +1,7 @@
 /**
- * One-shot backtest for local/CI: `npx tsx scripts/run-backtest-cli.ts [days]`
+ * One-shot backtest for local/CI:
+ * - `npx tsx scripts/run-backtest-cli.ts [days]`
+ * - `npx tsx scripts/run-backtest-cli.ts [days] both` — Exhaustion + Mirror (matches live `main.ts`)
  * Default: 30 days (max 90, same as Telegram /backtest).
  */
 import { runBacktest } from "../src/backtest/runner.js";
@@ -21,7 +23,13 @@ const days =
     ? Math.max(1, Math.min(90, parseInt(daysArg, 10)))
     : 30;
 
-const r = await runBacktest({ days });
+const mode = process.argv[3]?.toLowerCase();
+const eligibleSetups =
+  mode === "both" || mode === "exhaustion+mirror"
+    ? (["Exhaustion", "Mirror"] as const)
+    : (["Exhaustion"] as const);
+
+const r = await runBacktest({ days, eligibleSetups: [...eligibleSetups] });
 if (!r.ok) {
   console.error("Backtest failed:", r.message);
   process.exit(1);

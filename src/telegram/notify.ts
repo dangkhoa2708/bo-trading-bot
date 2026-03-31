@@ -46,6 +46,7 @@ import {
   normalizeBscPrivateKey,
   placePancakeBnbPredictionBet,
 } from "../pancakeswap/predictionBet.js";
+import { effectivePancakeBetWei } from "../pancakeswap/betSizing.js";
 import {
   getPancakeBet,
   registerPendingPancakeBet,
@@ -75,7 +76,8 @@ async function runConfiguredPancakeBet(
   },
 ): Promise<ConfiguredPancakeBetRun> {
   const pk = normalizeBscPrivateKey(config.bscWalletPrivateKey);
-  const betWei = options?.betWeiOverride ?? config.pancakePredictionBetWei;
+  const baseBetWei = options?.betWeiOverride ?? config.pancakePredictionBetWei;
+  const betWei = effectivePancakeBetWei(baseBetWei, direction);
   if (betWei > 0n && pk === null && !config.dryRun) {
     console.warn(
       "[telegram] Pancake bet enabled but BSC_WALLET_PRIVATE_KEY missing or invalid",

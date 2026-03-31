@@ -6,6 +6,7 @@ import {
   normalizeBscPrivateKey,
   placePancakeBnbPredictionBet,
 } from "./predictionBet.js";
+import { effectivePancakeBetWei } from "./betSizing.js";
 import { registerPendingPancakeBet } from "./betTracker.js";
 
 export type AutoPlacementResult =
@@ -23,7 +24,10 @@ export async function autoPlacePancakeBetForSignal(args: {
   direction: "UP" | "DOWN";
 }): Promise<AutoPlacementResult> {
   const pk = normalizeBscPrivateKey(config.bscWalletPrivateKey);
-  const betWei = config.pancakePredictionBetWei;
+  const betWei = effectivePancakeBetWei(
+    config.pancakePredictionBetWei,
+    args.direction,
+  );
   if (pk === null || betWei === 0n) return { outcome: "not_configured" };
   if (config.dryRun) {
     return {

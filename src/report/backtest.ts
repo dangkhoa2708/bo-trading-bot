@@ -1,4 +1,36 @@
-import type { BacktestEmittedRow, BacktestResult } from "../backtest/runner.js";
+import type {
+  BacktestEmittedRow,
+  BacktestResult,
+  LiveEligibleSetup,
+} from "../backtest/runner.js";
+
+function eligibleModeDescription(setups: LiveEligibleSetup[]): string {
+  if (setups.length === 1 && setups[0] === "Exhaustion") {
+    return "Exhaustion-only emits";
+  }
+  if (
+    setups.includes("Exhaustion") &&
+    setups.includes("Mirror") &&
+    setups.length === 2
+  ) {
+    return "Exhaustion + Mirror emits";
+  }
+  return `${setups.join(" + ")} emits`;
+}
+
+function eligibleSignalsLabel(setups: LiveEligibleSetup[]): string {
+  if (setups.length === 1 && setups[0] === "Exhaustion") {
+    return "Exhaustion only";
+  }
+  if (
+    setups.includes("Exhaustion") &&
+    setups.includes("Mirror") &&
+    setups.length === 2
+  ) {
+    return "Exhaustion + Mirror";
+  }
+  return setups.join(" + ");
+}
 
 function escapeHtml(s: string): string {
   return s
@@ -36,19 +68,21 @@ export function buildBacktestReportHtml(r: BacktestResult): string {
   const a = r.allEnginePredictionBySetup;
   const dd = r.predictionByDirection;
   const ad = r.allEnginePredictionByDirection;
+  const modeLine = `<i>Exact live mode: ${escapeHtml(eligibleModeDescription(r.eligibleSetups))}, same config, same dispatcher, same next-candle scoring.</i>`;
+  const signalsSubtitle = escapeHtml(eligibleSignalsLabel(r.eligibleSetups));
 
   const header = [
     "📉 <b>Backtest</b> <i>(GMT+7)</i>",
     `🗓️ <b>Window</b>: last <code>${r.days}</code> day(s) of closed klines (ending now)`,
     `📎 <code>${escapeHtml(r.windowLabelGmt7)}</code>`,
     "",
-    "<i>Exact live mode: Exhaustion-only emits, same config, same dispatcher, same next-candle scoring.</i>",
+    modeLine,
     "",
     "📡 <b>Pair</b>",
     `• <code>${escapeHtml(r.pair)}</code>  <b>TF</b>: <code>${escapeHtml(r.interval)}</code>`,
     `• Klines in window: <code>${r.candleCount}</code>  <i>(+ ${r.candleCountFetched - r.candleCount} for resolving last prediction)</i>`,
     "",
-    "📡 <b>Signals</b> <i>(would send live — Exhaustion only)</i>",
+    `📡 <b>Signals</b> <i>(would send live — ${signalsSubtitle})</i>`,
     `• Total: <code>${r.emitted}</code>`,
     `• UP / DOWN: <code>${r.emittedUp} / ${r.emittedDown}</code>`,
     `• Setups: <code>${escapeHtml(r.setups)}</code>`,
@@ -60,7 +94,7 @@ export function buildBacktestReportHtml(r: BacktestResult): string {
     `• ❌ Wrong: <code>${r.predictionWrong}</code>`,
     `• 🏆 Win rate: <code>${r.predictionWinRatePct.toFixed(1)}%</code>`,
     "",
-    "↕️ <b>Exhaustion by direction (emitted)</b>",
+    "↕️ <b>By direction (emitted)</b>",
     `• UP: <code>${dd.UP.total}</code> (✅ <code>${dd.UP.right}</code> / ❌ <code>${dd.UP.wrong}</code>) — <code>${dd.UP.winRatePct.toFixed(1)}%</code>`,
     `• DOWN: <code>${dd.DOWN.total}</code> (✅ <code>${dd.DOWN.right}</code> / ❌ <code>${dd.DOWN.wrong}</code>) — <code>${dd.DOWN.winRatePct.toFixed(1)}%</code>`,
     "",
@@ -72,13 +106,13 @@ export function buildBacktestReportHtml(r: BacktestResult): string {
       ? `• Other: <code>${d.Other.total}</code> (✅ <code>${d.Other.right}</code> / ❌ <code>${d.Other.wrong}</code>) — <code>${d.Other.winRatePct.toFixed(1)}%</code>`
       : "• Other: <code>0</code>",
     "",
-    "🔓 <b>All engine signals</b> <i>live-eligible only (Exhaustion) incl. dispatcher-skipped</i>",
+    `🔓 <b>All engine signals</b> <i>live-eligible only (${signalsSubtitle}) incl. dispatcher-skipped</i>`,
     `• Total: <code>${r.allEnginePredictionTotal}</code>`,
     `• ✅ Right: <code>${r.allEnginePredictionRight}</code>`,
     `• ❌ Wrong: <code>${r.allEnginePredictionWrong}</code>`,
     `• 🏆 Win rate: <code>${r.allEnginePredictionWinRatePct.toFixed(1)}%</code>`,
     "",
-    "↕️ <b>Exhaustion by direction (all engine)</b>",
+    "↕️ <b>By direction (all engine)</b>",
     `• UP: <code>${ad.UP.total}</code> (✅ <code>${ad.UP.right}</code> / ❌ <code>${ad.UP.wrong}</code>) — <code>${ad.UP.winRatePct.toFixed(1)}%</code>`,
     `• DOWN: <code>${ad.DOWN.total}</code> (✅ <code>${ad.DOWN.right}</code> / ❌ <code>${ad.DOWN.wrong}</code>) — <code>${ad.DOWN.winRatePct.toFixed(1)}%</code>`,
     "",
