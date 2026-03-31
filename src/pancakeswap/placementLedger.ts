@@ -13,7 +13,7 @@ export type PancakePlacementRecord = {
   placementId: string;
   signalId: string;
   setup?: "Exhaustion" | "Mirror";
-  walletAddress: `0x${string}`;
+  walletAddress?: `0x${string}`;
   /** Links to <code>predictions.jsonl</code> / <code>signals.jsonl</code>; omitted for <code>MANUAL_PLACEMENT</code>. */
   predictionId?: string;
   epoch: string;
