@@ -3,7 +3,6 @@ import { formatEther } from "viem";
 import { config } from "../config.js";
 import {
   formatPancakeBetFollowUpHtml,
-  normalizeBscPrivateKey,
   placePancakeBnbPredictionBet,
 } from "./predictionBet.js";
 import { effectivePancakeBetWei } from "./betSizing.js";
