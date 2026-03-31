@@ -2,7 +2,7 @@ import { fetchKlinesRange } from "../binance/rest.js";
 import { config } from "../config.js";
 import { evaluate } from "../strategy/engine.js";
 import { SignalDispatcher } from "../signal/dispatcher.js";
-import type { Candle } from "../types.js";
+import type { Candle, StrategyResult } from "../types.js";
 import { fmtGmt7 } from "../time/utils.js";
 
 const MS_DAY = 24 * 60 * 60 * 1000;
@@ -201,11 +201,12 @@ export async function runBacktest(
   const predictionByDirection: DirectionPredStats = emptyDirectionPred();
   const allEnginePredictionByDirection: DirectionPredStats = emptyDirectionPred();
 
-  const isLiveEligibleSignal = (signal: {
-    signal: "UP" | "DOWN" | "NONE";
-    setup: string;
-  }): boolean =>
-    signal.signal !== "NONE" && eligibleSetupSet.has(signal.setup);
+  const isLiveEligibleSignal = (
+    signal: StrategyResult,
+  ): signal is StrategyResult & {
+    signal: "UP" | "DOWN";
+    setup: LiveEligibleSetup;
+  } => signal.signal !== "NONE" && eligibleSetupSet.has(signal.setup);
 
   for (const c of all) {
     if (pendingPrediction) {
