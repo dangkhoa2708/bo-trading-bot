@@ -12,6 +12,7 @@ export type PancakePlacementOutcome = "won" | "lost" | "draw" | "refund";
 export type PancakePlacementRecord = {
   placementId: string;
   signalId: string;
+  setup?: "Exhaustion" | "Mirror";
   /** Links to <code>predictions.jsonl</code> / <code>signals.jsonl</code>; omitted for <code>MANUAL_PLACEMENT</code>. */
   predictionId?: string;
   epoch: string;
@@ -59,6 +60,7 @@ export async function appendPancakePlacementSettlement(args: {
     const rec: PancakePlacementRecord = {
       placementId: args.row.placementId,
       signalId: args.row.signalId,
+      ...(args.row.setup !== undefined ? { setup: args.row.setup } : {}),
       ...(args.row.predictionId !== undefined
         ? { predictionId: args.row.predictionId }
         : {}),

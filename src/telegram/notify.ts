@@ -43,10 +43,13 @@ import {
   claimPancakePredictionEpochs,
   formatPancakeBetFollowUpHtml,
   formatPancakeClaimTelegramHtml,
-  normalizeBscPrivateKey,
   placePancakeBnbPredictionBet,
 } from "../pancakeswap/predictionBet.js";
 import { effectivePancakeBetWei } from "../pancakeswap/betSizing.js";
+import {
+  getWalletForSetup,
+  setupFromResultSetup,
+} from "../pancakeswap/setupWallets.js";
 import {
   getPancakeBet,
   registerPendingPancakeBet,
@@ -75,15 +78,20 @@ async function runConfiguredPancakeBet(
     placementContext?: PlacementContext;
   },
 ): Promise<ConfiguredPancakeBetRun> {
-  const pk = normalizeBscPrivateKey(config.bscWalletPrivateKey);
   const baseBetWei = options?.betWeiOverride ?? config.pancakePredictionBetWei;
   const betWei = effectivePancakeBetWei(baseBetWei, direction);
-  if (betWei > 0n && pk === null && !config.dryRun) {
+  const ctx = options?.placementContext;
+  const setup =
+    ctx?.kind === "signal_pick"
+      ? setupFromResultSetup(getPlacementLinkForOpenTime(ctx.fromOpenTime)?.setup)
+      : null;
+  const wallet = getWalletForSetup(setup);
+  if (betWei > 0n && wallet === null && !config.dryRun) {
     console.warn(
-      "[telegram] Pancake bet enabled but BSC_WALLET_PRIVATE_KEY missing or invalid",
+      "[telegram] Pancake bet enabled but routed wallet key missing or invalid",
     );
   }
-  if (pk === null || betWei === 0n) return { outcome: "not_configured" };
+  if (wallet === null || betWei === 0n) return { outcome: "not_configured" };
   if (config.dryRun) {
     return {
       outcome: "dryrun",
@@ -93,14 +101,13 @@ async function runConfiguredPancakeBet(
   try {
     const betResult = await placePancakeBnbPredictionBet({
       rpcUrl: config.bscRpcUrl,
-      privateKey: pk,
+      privateKey: wallet.privateKey,
       direction,
       valueWei: betWei,
     });
     if (betResult.ok) {
       let signalId = "UNKNOWN_PLACEMENT";
       let predictionId: string | undefined;
-      const ctx = options?.placementContext;
       if (ctx?.kind === "signal_pick") {
         const link = getPlacementLinkForOpenTime(ctx.fromOpenTime);
         signalId = link?.signalId ?? `unknown:${ctx.fromOpenTime}`;
@@ -113,6 +120,7 @@ async function runConfiguredPancakeBet(
       registerPendingPancakeBet({
         placementId,
         signalId,
+        ...(setup !== null ? { setup } : {}),
         ...(predictionId !== undefined ? { predictionId } : {}),
         betAmountBnb,
         epoch: betResult.epoch,
@@ -533,29 +541,29 @@ export async function startTelegramCommandListener(): Promise<void> {
     const data = "data" in cq ? cq.data : undefined;
     if (!data) return;
 
-    const claimMatch = /^pclaim:(\d+)$/.exec(data);
+    const claimMatch = /^pclaim:([0-9a-f-]+)$/.exec(data);
     if (claimMatch) {
       const chatId = String(ctx.chat?.id ?? "");
       if (chatId !== config.telegramChatId) {
         await ctx.answerCbQuery("Unauthorized");
         return;
       }
-      const epochStr = claimMatch[1]!;
-      const row = getPancakeBet(epochStr);
+      const placementId = claimMatch[1]!;
+      const row = getPancakeBet(placementId);
       if (!row || row.phase !== "awaiting_claim") {
         await ctx.answerCbQuery("Nothing to claim for this epoch");
         return;
       }
-      const pk = normalizeBscPrivateKey(config.bscWalletPrivateKey);
-      if (pk === null) {
+      const wallet = getWalletForSetup(row.setup ?? null);
+      if (wallet === null) {
         await ctx.answerCbQuery("Wallet not configured");
         return;
       }
       await ctx.answerCbQuery("Submitting claim…");
       const res = await claimPancakePredictionEpochs({
         rpcUrl: config.bscRpcUrl,
-        privateKey: pk,
-        epochs: [BigInt(epochStr)],
+        privateKey: wallet.privateKey,
+        epochs: [BigInt(row.epoch)],
       });
       if (res.ok) {
         const outcome = row.awaitingOutcome === "refund" ? "refund" : "won";
@@ -569,10 +577,10 @@ export async function startTelegramCommandListener(): Promise<void> {
           claimWei,
           claimTxHash: res.txHash,
         });
-        removePancakeBet(epochStr);
+        removePancakeBet(placementId);
       }
       await sendTelegramText(
-        formatPancakeClaimTelegramHtml(epochStr, res, {
+        formatPancakeClaimTelegramHtml(row.epoch, res, {
           placementId: row.placementId,
         }),
         { parseMode: "HTML" },

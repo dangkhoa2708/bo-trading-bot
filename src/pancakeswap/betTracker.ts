@@ -14,6 +14,7 @@ export type AwaitingClaimMeta = {
 export type TrackedPancakeBet = {
   placementId: string;
   signalId: string;
+  setup?: "Exhaustion" | "Mirror";
   /** Set when bet came from a signal pre-pick — matches <code>predictions.jsonl</code> / <code>signals.jsonl</code>. */
   predictionId?: string;
   /** Stake in BNB as a decimal string (e.g. <code>0.02</code>). */
@@ -66,9 +67,12 @@ function migrateRow(raw: unknown): TrackedPancakeBet | null {
       : undefined;
   const predictionId =
     typeof o.predictionId === "string" ? o.predictionId : undefined;
+  const setup =
+    o.setup === "Exhaustion" || o.setup === "Mirror" ? o.setup : undefined;
   return {
     placementId,
     signalId,
+    ...(setup !== undefined ? { setup } : {}),
     predictionId,
     betAmountBnb,
     epoch,
@@ -110,6 +114,7 @@ function writeState(rows: TrackedPancakeBet[]): void {
 export function registerPendingPancakeBet(row: {
   placementId: string;
   signalId: string;
+  setup?: "Exhaustion" | "Mirror";
   predictionId?: string;
   betAmountBnb: string;
   epoch: bigint;
@@ -120,18 +125,24 @@ export function registerPendingPancakeBet(row: {
 }): void {
   const epochStr = row.epoch.toString();
   const rows = readState();
-  const hadEpoch = rows.some((r) => r.epoch === epochStr);
-  const next = rows.filter((r) => r.epoch !== epochStr);
-  if (hadEpoch) {
+  const hadSameWalletEpoch = rows.some(
+    (r) => r.epoch === epochStr && r.walletAddress === row.walletAddress,
+  );
+  const next = rows.filter(
+    (r) => !(r.epoch === epochStr && r.walletAddress === row.walletAddress),
+  );
+  if (hadSameWalletEpoch) {
     console.warn(
-      "[pancake-bet-tracker] replacing pending row for epoch",
+      "[pancake-bet-tracker] replacing pending row for epoch+wallet",
       epochStr,
-      "(same epoch re-registered after successful bet — keeping latest tx)",
+      row.walletAddress,
+      "(same wallet re-registered on same epoch — keeping latest tx)",
     );
   }
   next.push({
     placementId: row.placementId,
     signalId: row.signalId,
+    ...(row.setup !== undefined ? { setup: row.setup } : {}),
     ...(row.predictionId !== undefined ? { predictionId: row.predictionId } : {}),
     betAmountBnb: row.betAmountBnb,
     epoch: epochStr,
@@ -149,11 +160,13 @@ export function listTrackedPancakeBets(): TrackedPancakeBet[] {
 }
 
 export function markPancakeBetAwaitingClaim(
-  epoch: string,
+  placementId: string,
   meta: AwaitingClaimMeta,
 ): void {
   const rows = readState();
-  const i = rows.findIndex((r) => r.epoch === epoch && r.phase === "awaiting_result");
+  const i = rows.findIndex(
+    (r) => r.placementId === placementId && r.phase === "awaiting_result",
+  );
   if (i === -1) return;
   rows[i] = {
     ...rows[i]!,
@@ -164,10 +177,10 @@ export function markPancakeBetAwaitingClaim(
   writeState(rows);
 }
 
-export function removePancakeBet(epoch: string): void {
-  writeState(readState().filter((r) => r.epoch !== epoch));
+export function removePancakeBet(placementId: string): void {
+  writeState(readState().filter((r) => r.placementId !== placementId));
 }
 
-export function getPancakeBet(epoch: string): TrackedPancakeBet | undefined {
-  return readState().find((r) => r.epoch === epoch);
+export function getPancakeBet(placementId: string): TrackedPancakeBet | undefined {
+  return readState().find((r) => r.placementId === placementId);
 }

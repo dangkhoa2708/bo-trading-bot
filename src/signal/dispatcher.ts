@@ -16,7 +16,7 @@ export function usesStrictDirectionDedupe(setup: string): boolean {
  */
 export class SignalDispatcher {
   private lastOpenTime: number | null = null;
-  private lastDirection: "UP" | "DOWN" | null = null;
+  private lastDirectionBySetup = new Map<string, "UP" | "DOWN">();
 
   shouldEmit(
     candleOpenTime: number,
@@ -30,12 +30,12 @@ export class SignalDispatcher {
     }
     if (
       usesStrictDirectionDedupe(result.setup) &&
-      this.lastDirection === result.signal
+      this.lastDirectionBySetup.get(result.setup) === result.signal
     ) {
       return { emit: false, reason: "same direction as previous alert" };
     }
     this.lastOpenTime = candleOpenTime;
-    this.lastDirection = result.signal;
+    this.lastDirectionBySetup.set(result.setup, result.signal);
     return { emit: true };
   }
 }

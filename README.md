@@ -18,7 +18,7 @@ Strategy behavior and constraints are defined in `RULES.md`.
 ## Current Scope
 
 - Binance spot signals only (no Binance order execution)
-- Optional: UP/DOWN on pre-prediction can place a **PancakeSwap BNB prediction** on BSC if you set `BSC_WALLET_PRIVATE_KEY` + `PANCAKE_PREDICTION_BET_BNB` in `.env` (see `RULES.md` — use a hot wallet, never commit keys)
+- Optional: UP/DOWN on pre-prediction can place a **PancakeSwap BNB prediction** on BSC if you set `BSC_WALLET_PRIVATE_KEY` or the setup-specific `EXHAUSTION_BSC_WALLET_PRIVATE_KEY` / `MIRROR_BSC_WALLET_PRIVATE_KEY` in `.env` (see `RULES.md` — use a hot wallet, never commit keys)
 - Single pair default: `BNBUSDT`
 - Single timeframe: `5m`
 

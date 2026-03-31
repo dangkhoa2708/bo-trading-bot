@@ -26,6 +26,7 @@ import { pullFakeSignalIfQueued } from "./prediction/injectedFakeSignal.js";
 import { logRuntime } from "./logging/runtime.js";
 import { startPancakeOutcomePoller } from "./pancakeswap/outcomePoller.js";
 import { autoPlacePancakeBetForSignal } from "./pancakeswap/autoPlacement.js";
+import { hasAnyConfiguredPancakeWallet } from "./pancakeswap/setupWallets.js";
 import {
   sendSignalReminderPings,
   sendTelegramText,
@@ -53,7 +54,12 @@ async function main(): Promise<void> {
   await logRuntime(
     `[main] ${config.symbol} ${config.interval} — buffer ${config.candleBuffer} — dryRun=${config.dryRun} — relaxedFilters=${config.relaxedSignalFilters}`,
   );
-  if (config.telegramBotToken && config.telegramChatId && !config.dryRun) {
+  if (
+    config.telegramBotToken &&
+    config.telegramChatId &&
+    !config.dryRun &&
+    hasAnyConfiguredPancakeWallet()
+  ) {
     startPancakeOutcomePoller(sendTelegramText);
   }
   void startTelegramCommandListener().catch((e) => {
@@ -173,7 +179,11 @@ async function main(): Promise<void> {
         fromSetup: result.setup,
         baselineClose: c.close,
       };
-      registerAwaitingHumanPick(c.openTime, { signalId, predictionId });
+      registerAwaitingHumanPick(c.openTime, {
+        signalId,
+        predictionId,
+        setup: result.setup,
+      });
       await logRuntime(
         `[pre-prediction] id=${signalId} from=${new Date(c.openTime).toISOString()} predict_next=${result.signal} setup=${result.setup} reason=${result.reason}`,
         "log",
@@ -209,6 +219,7 @@ async function main(): Promise<void> {
         signalId,
         predictionId,
         direction: result.signal,
+        setup: result.setup,
       });
       if (placed.outcome === "dryrun") {
         await logRuntime(`[pancake-auto] ${placed.plainText}`, "log", {
@@ -220,8 +231,8 @@ async function main(): Promise<void> {
           text: [
             "⚠️ <b>Pancake auto-placement skipped</b>",
             "",
-            "Missing <code>BSC_WALLET_PRIVATE_KEY</code> (or stake is disabled).",
-            "Stake is configured in <code>src/config.ts</code> (default: <code>0.05</code> BNB).",
+            "Missing a routed setup wallet key (or stake is disabled).",
+            "Stake is configured in <code>src/config.ts</code> (default: <code>0.005</code> BNB).",
           ].join("\n"),
           parseMode: "HTML",
         });

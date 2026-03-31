@@ -8,6 +8,7 @@ import {
 } from "./predictionBet.js";
 import { effectivePancakeBetWei } from "./betSizing.js";
 import { registerPendingPancakeBet } from "./betTracker.js";
+import { getWalletForSetup, setupFromResultSetup } from "./setupWallets.js";
 
 export type AutoPlacementResult =
   | { outcome: "not_configured" }
@@ -22,13 +23,14 @@ export async function autoPlacePancakeBetForSignal(args: {
   signalId: string;
   predictionId: string;
   direction: "UP" | "DOWN";
+  setup: "Exhaustion" | "Mirror";
 }): Promise<AutoPlacementResult> {
-  const pk = normalizeBscPrivateKey(config.bscWalletPrivateKey);
+  const wallet = getWalletForSetup(setupFromResultSetup(args.setup));
   const betWei = effectivePancakeBetWei(
     config.pancakePredictionBetWei,
     args.direction,
   );
-  if (pk === null || betWei === 0n) return { outcome: "not_configured" };
+  if (wallet === null || betWei === 0n) return { outcome: "not_configured" };
   if (config.dryRun) {
     return {
       outcome: "dryrun",
@@ -38,7 +40,7 @@ export async function autoPlacePancakeBetForSignal(args: {
   try {
     const betResult = await placePancakeBnbPredictionBet({
       rpcUrl: config.bscRpcUrl,
-      privateKey: pk,
+      privateKey: wallet.privateKey,
       direction: args.direction,
       valueWei: betWei,
     });
@@ -47,6 +49,7 @@ export async function autoPlacePancakeBetForSignal(args: {
       registerPendingPancakeBet({
         placementId,
         signalId: args.signalId,
+        setup: args.setup,
         predictionId: args.predictionId,
         betAmountBnb: formatEther(betWei),
         epoch: betResult.epoch,

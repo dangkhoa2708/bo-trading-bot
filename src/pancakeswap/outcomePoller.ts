@@ -6,7 +6,6 @@ import {
   estimateClaimPayoutWei,
   formatPancakeClaimTelegramHtml,
   getPancakeRoundOutcome,
-  normalizeBscPrivateKey,
   readPancakeLedgerClaimed,
 } from "./predictionBet.js";
 import {
@@ -16,6 +15,7 @@ import {
 } from "./betTracker.js";
 import { appendPancakePlacementSettlement } from "./placementLedger.js";
 import { updateWalletBalanceCache } from "./walletBalanceCache.js";
+import { getWalletForSetup, hasAnyConfiguredPancakeWallet } from "./setupWallets.js";
 
 const POLL_MS = 30_000;
 
@@ -33,10 +33,10 @@ type SendTelegram = (
 
 let started = false;
 
-function claimReplyMarkup(epoch: string) {
+function claimReplyMarkup(placementId: string) {
   return {
     inline_keyboard: [
-      [{ text: "Claim 🥞", callback_data: `pclaim:${epoch}` }],
+      [{ text: "Claim 🥞", callback_data: `pclaim:${placementId}` }],
     ],
   };
 }
@@ -60,16 +60,33 @@ function buildOutcomeHtml(args: {
 }
 
 async function pollTick(send: SendTelegram): Promise<void> {
-  const pk = normalizeBscPrivateKey(config.bscWalletPrivateKey);
-  if (config.dryRun || pk === null) return;
+  if (config.dryRun || !hasAnyConfiguredPancakeWallet()) return;
 
   // Refresh wallet balance cache for reports (best effort; non-blocking for outcomes).
-  void updateWalletBalanceCache({ rpcUrl: config.bscRpcUrl, privateKey: pk });
+  const exhaustionWallet = getWalletForSetup("Exhaustion");
+  const mirrorWallet = getWalletForSetup("Mirror");
+  const sharedWallet = getWalletForSetup(null);
+  for (const wallet of [exhaustionWallet, mirrorWallet, sharedWallet]) {
+    if (!wallet) continue;
+    void updateWalletBalanceCache({
+      rpcUrl: config.bscRpcUrl,
+      privateKey: wallet.privateKey,
+    });
+  }
 
   const rows = listTrackedPancakeBets();
   for (const row of rows) {
     try {
       const epoch = BigInt(row.epoch);
+      const wallet = getWalletForSetup(row.setup ?? null);
+      if (wallet === null) {
+        console.warn(
+          "[pancake-outcome-poller] missing wallet for row",
+          row.epoch,
+          row.setup ?? "Shared",
+        );
+        continue;
+      }
       if (row.phase === "awaiting_claim") {
         const claimed = await readPancakeLedgerClaimed({
           rpcUrl: config.bscRpcUrl,
@@ -91,7 +108,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
               row.epoch,
             );
           }
-          removePancakeBet(row.epoch);
+          removePancakeBet(row.placementId);
         }
         continue;
       }
@@ -116,7 +133,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
           });
           const res = await claimPancakePredictionEpochs({
             rpcUrl: config.bscRpcUrl,
-            privateKey: pk,
+            privateKey: wallet.privateKey,
             epochs: [epoch],
           });
           if (res.ok) {
@@ -128,7 +145,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
               claimWei,
               claimTxHash: res.txHash,
             });
-            removePancakeBet(row.epoch);
+            removePancakeBet(row.placementId);
             await send(
               buildOutcomeHtml({
                 headline: "🎉 <b>Pancake round finished — you won</b>",
@@ -156,9 +173,9 @@ async function pollTick(send: SendTelegram): Promise<void> {
                 detail:
                   "Auto-claim failed. Tap <b>Claim</b> to send <code>claim([epoch])</code> from your bot wallet.",
               }),
-              { parseMode: "HTML", replyMarkup: claimReplyMarkup(row.epoch) },
+              { parseMode: "HTML", replyMarkup: claimReplyMarkup(row.placementId) },
             );
-            markPancakeBetAwaitingClaim(row.epoch, {
+            markPancakeBetAwaitingClaim(row.placementId, {
               estimatedClaimWei: est.toString(),
               awaitingOutcome: "won",
             });
@@ -175,7 +192,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
           const est = BigInt(row.valueWei);
           const res = await claimPancakePredictionEpochs({
             rpcUrl: config.bscRpcUrl,
-            privateKey: pk,
+            privateKey: wallet.privateKey,
             epochs: [epoch],
           });
           if (res.ok) {
@@ -187,7 +204,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
               claimWei,
               claimTxHash: res.txHash,
             });
-            removePancakeBet(row.epoch);
+            removePancakeBet(row.placementId);
             await send(
               buildOutcomeHtml({
                 headline: "🔁 <b>Pancake round — refund available</b>",
@@ -214,9 +231,9 @@ async function pollTick(send: SendTelegram): Promise<void> {
                 detail:
                   "Auto-claim failed. Tap <b>Claim</b> to recover your stake.",
               }),
-              { parseMode: "HTML", replyMarkup: claimReplyMarkup(row.epoch) },
+              { parseMode: "HTML", replyMarkup: claimReplyMarkup(row.placementId) },
             );
-            markPancakeBetAwaitingClaim(row.epoch, {
+            markPancakeBetAwaitingClaim(row.placementId, {
               estimatedClaimWei: row.valueWei,
               awaitingOutcome: "refund",
             });
@@ -244,7 +261,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
             outcome: "lost",
             claimWei: 0n,
           });
-          removePancakeBet(row.epoch);
+          removePancakeBet(row.placementId);
           break;
         }
         case "draw": {
@@ -263,7 +280,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
             outcome: "draw",
             claimWei: 0n,
           });
-          removePancakeBet(row.epoch);
+          removePancakeBet(row.placementId);
           break;
         }
       }
@@ -279,8 +296,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
  */
 export function startPancakeOutcomePoller(send: SendTelegram): void {
   if (started) return;
-  const pk = normalizeBscPrivateKey(config.bscWalletPrivateKey);
-  if (config.dryRun || pk === null) return;
+  if (config.dryRun || !hasAnyConfiguredPancakeWallet()) return;
   started = true;
   void pollTick(send).catch((e) =>
     console.error("[pancake-outcome-poller] initial tick failed", e),

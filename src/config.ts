@@ -160,10 +160,14 @@ export type BotConfig = {
   bscRpcUrl: string;
 
   /**
-   * Optional: EOA private key for Pancake BNB prediction when you tap UP/DOWN on pre-prediction.
-   * Set via `BSC_WALLET_PRIVATE_KEY` only — never commit. Empty = no on-chain bet.
+   * Optional shared fallback EOA private key for Pancake BNB prediction when a setup-specific
+   * wallet is not configured (also used by manual `/placement`).
    */
   bscWalletPrivateKey: string;
+  /** Optional Exhaustion-specific wallet (falls back to `bscWalletPrivateKey`). */
+  exhaustionBscWalletPrivateKey: string;
+  /** Optional Mirror-specific wallet (falls back to `bscWalletPrivateKey`). */
+  mirrorBscWalletPrivateKey: string;
   /**
    * BNB amount per bet (wei). Set in `defaults` below. `0n` = disabled.
    */
@@ -294,6 +298,8 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   bscRpcUrl: "https://bsc-dataseed.binance.org",
 
   bscWalletPrivateKey: "",
+  exhaustionBscWalletPrivateKey: "",
+  mirrorBscWalletPrivateKey: "",
   pancakePredictionBetWei: parseEther("0.005"),
 };
 
@@ -301,6 +307,12 @@ export const config: BotConfig = {
   ...defaults,
   bscRpcUrl: process.env.BSC_RPC_URL ?? defaults.bscRpcUrl,
   bscWalletPrivateKey: process.env.BSC_WALLET_PRIVATE_KEY?.trim() ?? "",
+  exhaustionBscWalletPrivateKey:
+    process.env.EXHAUSTION_BSC_WALLET_PRIVATE_KEY?.trim() ??
+    defaults.exhaustionBscWalletPrivateKey,
+  mirrorBscWalletPrivateKey:
+    process.env.MIRROR_BSC_WALLET_PRIVATE_KEY?.trim() ??
+    defaults.mirrorBscWalletPrivateKey,
   pancakePredictionBetWei: defaults.pancakePredictionBetWei,
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
   telegramChatId: process.env.TELEGRAM_CHAT_ID ?? "",

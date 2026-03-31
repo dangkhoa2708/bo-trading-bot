@@ -84,16 +84,11 @@ describe("SignalDispatcher", () => {
     }
   });
 
-  it("Mirror after same-dir Momentum follows mirrorAllowRepeatSameDirection", () => {
+  it("allows Mirror after same-dir Momentum with per-setup memory", () => {
     const d = new SignalDispatcher();
     expect(d.shouldEmit(100, upMom).emit).toBe(true);
     const r = d.shouldEmit(200, upMir);
-    if (config.mirrorAllowRepeatSameDirection) {
-      expect(r.emit).toBe(true);
-    } else {
-      expect(r.emit).toBe(false);
-      expect(r.reason).toBe("same direction as previous alert");
-    }
+    expect(r.emit).toBe(true);
   });
 
   it("allows Momentum after same-dir Mirror (loose bypass)", () => {
