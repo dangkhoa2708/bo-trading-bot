@@ -11,8 +11,6 @@ export type RoutedWallet = {
 };
 
 export function walletDisplayName(key: WalletKey): string {
-  if (key === "Exhaustion") return "Exhaustion wallet";
-  if (key === "Mirror") return "Mirror wallet";
   return "Shared wallet";
 }
 
@@ -28,28 +26,12 @@ export function setupFromResultSetup(
 }
 
 export function getWalletForSetup(
-  setup: WalletSetup | null | undefined,
+  _setup: WalletSetup | null | undefined,
 ): RoutedWallet | null {
-  if (setup === "Exhaustion") {
-    const pk =
-      normalizeOptional(config.exhaustionBscWalletPrivateKey) ??
-      normalizeOptional(config.bscWalletPrivateKey);
-    return pk ? { setup, privateKey: pk } : null;
-  }
-  if (setup === "Mirror") {
-    const pk =
-      normalizeOptional(config.mirrorBscWalletPrivateKey) ??
-      normalizeOptional(config.bscWalletPrivateKey);
-    return pk ? { setup, privateKey: pk } : null;
-  }
   const shared = normalizeOptional(config.bscWalletPrivateKey);
   return shared ? { setup: "Shared", privateKey: shared } : null;
 }
 
 export function hasAnyConfiguredPancakeWallet(): boolean {
-  return (
-    getWalletForSetup("Exhaustion") !== null ||
-    getWalletForSetup("Mirror") !== null ||
-    getWalletForSetup(null) !== null
-  );
+  return getWalletForSetup(null) !== null;
 }

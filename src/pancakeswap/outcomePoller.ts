@@ -34,7 +34,7 @@ type SendTelegram = (
       >;
     };
   },
-) => Promise<void>;
+) => Promise<unknown>;
 
 let started = false;
 
@@ -81,24 +81,13 @@ function buildOutcomeHtml(args: {
 async function pollTick(send: SendTelegram): Promise<void> {
   if (config.dryRun || !hasAnyConfiguredPancakeWallet()) return;
 
-  // Refresh wallet balance cache for reports (best effort; non-blocking for outcomes).
-  const exhaustionWallet = getWalletForSetup("Exhaustion");
-  const mirrorWallet = getWalletForSetup("Mirror");
+  // Refresh the shared wallet balance cache for reports (best effort).
   const sharedWallet = getWalletForSetup(null);
-  const wallets: Array<
-    | { key: "Exhaustion" | "Mirror" | "Shared"; privateKey: `0x${string}` }
-    | null
-  > = [
-    exhaustionWallet ? { key: "Exhaustion", privateKey: exhaustionWallet.privateKey } : null,
-    mirrorWallet ? { key: "Mirror", privateKey: mirrorWallet.privateKey } : null,
-    sharedWallet ? { key: "Shared", privateKey: sharedWallet.privateKey } : null,
-  ];
-  for (const wallet of wallets) {
-    if (!wallet) continue;
+  if (sharedWallet) {
     void updateWalletBalanceCache({
-      key: wallet.key,
+      key: "Shared",
       rpcUrl: config.bscRpcUrl,
-      privateKey: wallet.privateKey,
+      privateKey: sharedWallet.privateKey,
     });
   }
 
@@ -182,7 +171,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
                 direction: row.direction,
                 valueBnb,
                 setup: row.setup,
-                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletLabel: walletDisplayName(wallet.setup),
                 walletAddress: row.walletAddress,
                 detail: "<b>Auto-claim</b>: waited 20s after round finish, then submitted and confirmed ✅",
               }),
@@ -192,7 +181,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
               formatPancakeClaimTelegramHtml(row.epoch, res, {
                 placementId: row.placementId,
                 ...(row.setup ? { setup: row.setup } : {}),
-                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletLabel: walletDisplayName(wallet.setup),
                 walletAddress: row.walletAddress,
               }),
               { parseMode: "HTML" },
@@ -206,7 +195,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
                 direction: row.direction,
                 valueBnb,
                 setup: row.setup,
-                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletLabel: walletDisplayName(wallet.setup),
                 walletAddress: row.walletAddress,
                 detail:
                   "Auto-claim failed. Tap <b>Claim</b> to send <code>claim([epoch])</code> from your bot wallet.",
@@ -221,7 +210,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
               formatPancakeClaimTelegramHtml(row.epoch, res, {
                 placementId: row.placementId,
                 ...(row.setup ? { setup: row.setup } : {}),
-                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletLabel: walletDisplayName(wallet.setup),
                 walletAddress: row.walletAddress,
               }),
               { parseMode: "HTML" },
@@ -254,7 +243,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
                 direction: row.direction,
                 valueBnb,
                 setup: row.setup,
-                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletLabel: walletDisplayName(wallet.setup),
                 walletAddress: row.walletAddress,
                 detail: "<b>Auto-claim</b>: waited 20s after round finish, then refund submitted and confirmed ✅",
               }),
@@ -264,7 +253,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
               formatPancakeClaimTelegramHtml(row.epoch, res, {
                 placementId: row.placementId,
                 ...(row.setup ? { setup: row.setup } : {}),
-                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletLabel: walletDisplayName(wallet.setup),
                 walletAddress: row.walletAddress,
               }),
               { parseMode: "HTML" },
@@ -277,7 +266,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
                 direction: row.direction,
                 valueBnb,
                 setup: row.setup,
-                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletLabel: walletDisplayName(wallet.setup),
                 walletAddress: row.walletAddress,
                 detail:
                   "Auto-claim failed. Tap <b>Claim</b> to recover your stake.",
@@ -292,7 +281,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
               formatPancakeClaimTelegramHtml(row.epoch, res, {
                 placementId: row.placementId,
                 ...(row.setup ? { setup: row.setup } : {}),
-                walletLabel: walletDisplayName(row.setup ?? "Shared"),
+                walletLabel: walletDisplayName(wallet.setup),
                 walletAddress: row.walletAddress,
               }),
               { parseMode: "HTML" },
@@ -308,7 +297,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
               direction: row.direction,
               valueBnb,
               setup: row.setup,
-              walletLabel: walletDisplayName(row.setup ?? "Shared"),
+              walletLabel: walletDisplayName(wallet.setup),
               walletAddress: row.walletAddress,
             }),
             { parseMode: "HTML" },
@@ -329,7 +318,7 @@ async function pollTick(send: SendTelegram): Promise<void> {
               direction: row.direction,
               valueBnb,
               setup: row.setup,
-              walletLabel: walletDisplayName(row.setup ?? "Shared"),
+              walletLabel: walletDisplayName(wallet.setup),
               walletAddress: row.walletAddress,
               detail: "<i>Lock price equals close price — no winner payout.</i>",
             }),

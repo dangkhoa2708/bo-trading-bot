@@ -1,4 +1,4 @@
-import { sendTelegramText } from "../telegram/notify.js";
+import { sendTelegramText, type SentTelegramMessage } from "../telegram/notify.js";
 
 const ANSI_REGEX = /\x1B\[[0-9;]*m/g;
 
@@ -21,19 +21,20 @@ export async function logRuntime(
       >;
     };
   },
-): Promise<void> {
+): Promise<SentTelegramMessage | null> {
   if (level === "warn") console.warn(message);
   else if (level === "error") console.error(message);
   else console.log(message);
 
   // Only send to Telegram when explicitly requested.
-  if (!telegram) return;
+  if (!telegram) return null;
   try {
-    await sendTelegramText(stripAnsi(telegram.text), {
+    return await sendTelegramText(stripAnsi(telegram.text), {
       parseMode: telegram.parseMode,
       replyMarkup: telegram.replyMarkup,
     });
   } catch (e) {
     console.error("[runtime-log] telegram send failed", e);
+    return null;
   }
 }

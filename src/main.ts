@@ -27,6 +27,7 @@ import { hasAnyConfiguredPancakeWallet } from "./pancakeswap/setupWallets.js";
 import {
   sendSignalReminderPings,
   sendTelegramText,
+  startSignalCountdownUpdates,
   startTelegramCommandListener,
 } from "./telegram/notify.js";
 
@@ -156,23 +157,32 @@ async function main(): Promise<void> {
       const predictionId = randomUUID();
       const signalId = `${c.openTime}-${result.signal}-${result.setup}`;
       const pancakeCd = await fetchPancakePredictionBnbCountdown(config.bscRpcUrl);
-      await logRuntime(
+      const replyMarkup = signalReplyMarkup({
+        pair: config.symbol,
+        interval: config.interval,
+        fromOpenTime: c.openTime,
+      });
+      const buildSignalText = (nowSec: number) =>
+        formatSignalTelegramLog(config.symbol, c, result, signalId, {
+          extraHtmlBeforeChart: formatPancakeCountdownSignalSnippetHtml(pancakeCd, nowSec),
+          includePickPrompt: true,
+          baselineCloseOverride: c.close,
+        });
+      const sent = await logRuntime(
         `[signal] id=${signalId} ${new Date(c.openTime).toISOString()} ${result.signal} ${result.setup} — ${result.reason}`,
         "log",
         {
-          text: formatSignalTelegramLog(config.symbol, c, result, signalId, {
-            extraHtmlBeforeChart: formatPancakeCountdownSignalSnippetHtml(pancakeCd),
-            includePickPrompt: true,
-            baselineCloseOverride: c.close,
-          }),
+          text: buildSignalText(Math.floor(Date.now() / 1000)),
           parseMode: "HTML",
-          replyMarkup: signalReplyMarkup({
-            pair: config.symbol,
-            interval: config.interval,
-            fromOpenTime: c.openTime,
-          }),
+          replyMarkup,
         },
       );
+      startSignalCountdownUpdates({
+        target: sent,
+        buildText: buildSignalText,
+        replyMarkup,
+        countdown: pancakeCd,
+      });
       pendingPrediction = {
         signalId,
         predictionId,

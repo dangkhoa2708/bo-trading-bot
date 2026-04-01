@@ -160,13 +160,12 @@ export type BotConfig = {
   bscRpcUrl: string;
 
   /**
-   * Optional shared fallback EOA private key for Pancake BNB prediction when a setup-specific
-   * wallet is not configured (also used by manual `/placement`).
+   * Shared EOA private key for Pancake BNB prediction and manual `/placement`.
    */
   bscWalletPrivateKey: string;
-  /** Optional Exhaustion-specific wallet (falls back to `bscWalletPrivateKey`). */
+  /** Legacy field retained for env compatibility; shared wallet is used for all setups. */
   exhaustionBscWalletPrivateKey: string;
-  /** Optional Mirror-specific wallet (falls back to `bscWalletPrivateKey`). */
+  /** Legacy field retained for env compatibility; shared wallet is used for all setups. */
   mirrorBscWalletPrivateKey: string;
   /**
    * BNB amount per bet (wei). Set in `defaults` below. `0n` = disabled.
@@ -216,19 +215,19 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   exhaustionRequireEmaAlignment: false,
   /** Off = fewer exhaustion vetoes near S/R (more signals). */
   exhaustionApplyLevelReconfirm: false,
-  /** DOWN is noisier; 90d search preferred longer runs and a stronger body/range floor. */
-  exhaustionDownRunMin: 5,
+  /** Medium-loosen preset: allow earlier DOWN reversals for more live signals. */
+  exhaustionDownRunMin: 4,
   exhaustionDownRevMaxPrevRangeMult: 2.0,
-  exhaustionDownRevBodyVsBaselineMult: 0.55,
-  exhaustionDownRevMinBodyToRange: 0.43,
+  exhaustionDownRevBodyVsBaselineMult: 0.48,
+  exhaustionDownRevMinBodyToRange: 0.38,
   exhaustionDownApplyLevelReconfirm: false,
   /**
-   * UP: 90d search — best trade-off vs baseline was run 4, body 0.75, maxPrev 2, level off.
+   * Medium-loosen preset: reduce UP reversal strictness without removing core confirmation.
    */
-  exhaustionUpRunMin: 4,
+  exhaustionUpRunMin: 3,
   exhaustionUpRevMaxPrevRangeMult: 2.0,
-  exhaustionUpRevBodyVsBaselineMult: 0.75,
-  exhaustionUpRevMinBodyToRange: 0.33,
+  exhaustionUpRevBodyVsBaselineMult: 0.62,
+  exhaustionUpRevMinBodyToRange: 0.3,
   exhaustionUpRevMaxCloseToExtremePct: 0.48,
   exhaustionUpApplyLevelReconfirm: false,
 
@@ -255,20 +254,20 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   mirrorUpDumpAtrMult: 6.5,
   mirrorUpWeakRedBodyRangePct: 0.68,
   mirrorUpMinGreenBodyToRange: 0.33,
-  mirrorUpMinGreenBodyVsPrevRedMult: 1.0,
+  mirrorUpMinGreenBodyVsPrevRedMult: 0.9,
   mirrorUpMinReclaimPrevRedBodyPct: 0,
   mirrorUpApplyDumpVetoWhenRelaxed: false,
   mirrorUpApplyChoppyVeto: false,
-  /** 90d strict Mirror context search: floor EMA slope to avoid steep bearish EMA. */
-  mirrorUpMinEmaSlopeBars: 6,
-  mirrorUpMinEmaSlopePct: -0.003,
-  /** 90d strict search: veto UP when >5 of prior 10 bars (excl. last 3) closed below EMA20. */
+  /** Medium-loosen preset: tolerate a steeper short EMA fade before vetoing Mirror UP. */
+  mirrorUpMinEmaSlopeBars: 4,
+  mirrorUpMinEmaSlopePct: -0.008,
+  /** Medium-loosen preset: allow more recent below-EMA structure before vetoing Mirror UP. */
   mirrorUpBelowEmaLookback: 10,
-  mirrorUpMaxClosesBelowEma: 5,
+  mirrorUpMaxClosesBelowEma: 7,
   mirrorDownLightReconfirm: true,
-  /** Mirror DOWN: 90d strict search favored a much stronger red signal bar. */
-  mirrorDownMinBodyToRange: 0.56,
-  mirrorDownMaxImpulseRun: 6,
+  /** Medium-loosen preset: require less extreme red signal quality on Mirror DOWN fallback. */
+  mirrorDownMinBodyToRange: 0.48,
+  mirrorDownMaxImpulseRun: 7,
 
   momentumMicroPauseBodyAtrMult: 0.35,
   momentumMicroPauseBodyVsMedianMult: 0.42,

@@ -171,22 +171,45 @@ export async function fetchPancakePredictionBnbCountdown(
 /** One HTML line for embedding in the main signal alert (after Reason, before mini chart). */
 export function formatPancakeCountdownSignalSnippetHtml(
   r: PancakePredictionCountdown,
+  nowSec = r.ok ? r.fetchedAtSec : Math.floor(Date.now() / 1000),
 ): string {
   if (!r.ok) {
     const short = r.message.length > 160 ? `${r.message.slice(0, 157)}…` : r.message;
     return `⏱ <b>Pancake countdown</b>: <i>unavailable</i> — <code>${escapeHtml(short)}</code>`;
   }
   const ep = r.epoch.toString();
-  if (r.phase === "ended") {
+  const live =
+    r.startTimestamp === 0 || r.lockTimestamp === 0 || r.closeTimestamp === 0
+      ? {
+          phase: r.phase,
+          secondsRemaining: r.secondsRemaining,
+          headline: r.headline,
+        }
+      : phaseFromRoundWallClock(
+          nowSec,
+          r.startTimestamp,
+          r.lockTimestamp,
+          r.closeTimestamp,
+        );
+  if (live.phase === "ended") {
     return [
       `⏱ <b>Pancake BNB prediction</b> epoch <code>${escapeHtml(ep)}</code>`,
-      `<i>${escapeHtml(r.headline)}</i>`,
+      `<b>Phase</b>: <code>${escapeHtml(live.phase)}</code>`,
+      `<i>${escapeHtml(live.headline)}</i>`,
     ].join(" — ");
   }
-  const t = formatDurationParts(r.secondsRemaining);
+  const t = formatDurationParts(live.secondsRemaining);
   const target =
-    r.phase === "betting" ? "lock" : r.phase === "pending" ? "betting open" : "close";
-  return `⏱ <b>Pancake BNB prediction</b> epoch <code>${escapeHtml(ep)}</code> — phase <code>${escapeHtml(r.phase)}</code> → ${escapeHtml(target)} in <code>${escapeHtml(t)}</code>`;
+    live.phase === "betting"
+      ? "lock"
+      : live.phase === "pending"
+        ? "betting open"
+        : "close";
+  return [
+    `⏱ <b>Pancake BNB prediction</b> epoch <code>${escapeHtml(ep)}</code>`,
+    `<b>Phase</b>: <code>${escapeHtml(live.phase)}</code>`,
+    `<b>Countdown</b>: <code>${escapeHtml(t)}</code> → <code>${escapeHtml(target)}</code>`,
+  ].join(" — ");
 }
 
 export function buildLiveCountdownTelegramHtml(

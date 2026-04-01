@@ -35,6 +35,7 @@ import {
 } from "../prediction/humanPick.js";
 import {
   buildLiveCountdownTelegramHtml,
+  type PancakePredictionCountdown,
   fetchPancakePredictionBnbCountdown,
   formatPancakeCountdownSignalSnippetHtml,
 } from "../pancakeswap/predictionCountdown.js";
@@ -194,6 +195,18 @@ export const SIGNAL_REMINDER_ALERT_TEXT = "**Signal Alert** 🔔";
 // After signal + pre-prediction, send 5 short reminder pings 1s apart.
 const SIGNAL_REMINDER_COUNT = 5;
 const SIGNAL_REMINDER_GAP_MS = 1000;
+const SIGNAL_COUNTDOWN_REFRESH_MS = 5_000;
+
+type TelegramInlineKeyboard = {
+  inline_keyboard: Array<
+    Array<{ text: string; url: string } | { text: string; callback_data: string }>
+  >;
+};
+
+export type SentTelegramMessage = {
+  chatId: string;
+  messageId: number;
+};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -225,28 +238,88 @@ export async function sendTelegramText(
   text: string,
   options?: {
     parseMode?: "HTML" | "MarkdownV2";
-    replyMarkup?: {
-      inline_keyboard: Array<
-        Array<{ text: string; url: string } | { text: string; callback_data: string }>
-      >;
-    };
+    replyMarkup?: TelegramInlineKeyboard;
   },
-): Promise<void> {
+): Promise<SentTelegramMessage | null> {
   if (!config.telegramBotToken || !config.telegramChatId) {
     console.warn("[telegram] missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID");
-    return;
+    return null;
   }
   if (config.dryRun) {
     console.log("[dry-run] telegram:", text);
     if (options?.replyMarkup) {
       console.log("[dry-run] telegram reply_markup:", JSON.stringify(options.replyMarkup));
     }
-    return;
+    return null;
   }
-  await getBot().telegram.sendMessage(config.telegramChatId, text, {
+  const msg = await getBot().telegram.sendMessage(config.telegramChatId, text, {
     parse_mode: options?.parseMode,
     reply_markup: options?.replyMarkup,
   });
+  return { chatId: String(msg.chat.id), messageId: msg.message_id };
+}
+
+export async function editTelegramText(
+  target: SentTelegramMessage,
+  text: string,
+  options?: {
+    parseMode?: "HTML" | "MarkdownV2";
+    replyMarkup?: TelegramInlineKeyboard;
+  },
+): Promise<boolean> {
+  if (!config.telegramBotToken || config.dryRun) return false;
+  try {
+    await getBot().telegram.editMessageText(
+      target.chatId,
+      target.messageId,
+      undefined,
+      text,
+      {
+        parse_mode: options?.parseMode,
+        reply_markup: options?.replyMarkup,
+      },
+    );
+    return true;
+  } catch (e) {
+    console.warn("[telegram] edit message failed", e);
+    return false;
+  }
+}
+
+export function startSignalCountdownUpdates(args: {
+  target: SentTelegramMessage | null;
+  buildText: (nowSec: number) => string;
+  replyMarkup?: TelegramInlineKeyboard;
+  countdown: PancakePredictionCountdown;
+}): void {
+  if (!args.target || !args.countdown.ok || config.dryRun) return;
+
+  const stopAtSec =
+    args.countdown.phase === "lock"
+      ? args.countdown.closeTimestamp
+      : args.countdown.lockTimestamp;
+  let lastText = args.buildText(Math.floor(Date.now() / 1000));
+
+  const tick = async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const nextText = args.buildText(nowSec);
+    if (nextText !== lastText) {
+      const ok = await editTelegramText(args.target!, nextText, {
+        parseMode: "HTML",
+        replyMarkup: args.replyMarkup,
+      });
+      if (!ok) return;
+      lastText = nextText;
+    }
+    if (nowSec >= stopAtSec) return;
+    setTimeout(() => {
+      void tick();
+    }, SIGNAL_COUNTDOWN_REFRESH_MS);
+  };
+
+  setTimeout(() => {
+    void tick();
+  }, SIGNAL_COUNTDOWN_REFRESH_MS);
 }
 
 export async function startTelegramCommandListener(): Promise<void> {
@@ -414,21 +487,30 @@ export async function startTelegramCommandListener(): Promise<void> {
       setup: FAKE_SIGNAL_SETUP,
       reason,
     };
-    await sendTelegramText(
+    const replyMarkup = signalReplyMarkup({
+      pair: config.symbol,
+      interval: config.interval,
+      fromOpenTime: bar.openTime,
+    });
+    const buildSignalText = (nowSec: number) =>
       formatSignalTelegramLog(config.symbol, bar, fakeResult, signalId, {
-        extraHtmlBeforeChart: formatPancakeCountdownSignalSnippetHtml(pancakeCd),
+        extraHtmlBeforeChart: formatPancakeCountdownSignalSnippetHtml(pancakeCd, nowSec),
         includePickPrompt: true,
         baselineCloseOverride: bar.close,
-      }),
+      });
+    const sent = await sendTelegramText(
+      buildSignalText(Math.floor(Date.now() / 1000)),
       {
         parseMode: "HTML",
-        replyMarkup: signalReplyMarkup({
-          pair: config.symbol,
-          interval: config.interval,
-          fromOpenTime: bar.openTime,
-        }),
+        replyMarkup,
       },
     );
+    startSignalCountdownUpdates({
+      target: sent,
+      buildText: buildSignalText,
+      replyMarkup,
+      countdown: pancakeCd,
+    });
     await sendSignalReminderPings();
   });
   b.command("placement", async (ctx) => {
@@ -631,7 +713,7 @@ export async function startTelegramCommandListener(): Promise<void> {
         formatPancakeClaimTelegramHtml(row.epoch, res, {
           placementId: row.placementId,
           ...(row.setup ? { setup: row.setup } : {}),
-          walletLabel: walletDisplayName(row.setup ?? "Shared"),
+          walletLabel: walletDisplayName(wallet.setup),
           walletAddress: row.walletAddress,
         }),
         { parseMode: "HTML" },
