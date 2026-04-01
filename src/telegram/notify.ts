@@ -654,8 +654,27 @@ export async function startTelegramCommandListener(): Promise<void> {
         return;
       }
       await ctx.answerCbQuery(`Recorded your pick: ${dir}`);
-      // Auto-placement is handled by the strategy loop (Exhaustion-only mode).
-      // Keep pick buttons only for scoring; avoid double-betting on tap.
+      const runBet = await runConfiguredPancakeBet(dir, {
+        placementContext: { kind: "signal_pick", fromOpenTime },
+      });
+      if (runBet.outcome === "dryrun") {
+        await sendTelegramText(
+          `<b>Pancake prediction</b> <i>(dry-run)</i>\n<code>${runBet.plainText}</code>`,
+          { parseMode: "HTML" },
+        );
+      } else if (runBet.outcome === "not_configured") {
+        await sendTelegramText(
+          [
+            "⚠️ <b>Pancake placement skipped</b>",
+            "",
+            "Missing a routed setup wallet key or the live stake is disabled.",
+            `Current live amount: <code>${formatEther(config.pancakePredictionBetWei)}</code> BNB`,
+          ].join("\n"),
+          { parseMode: "HTML" },
+        );
+      } else {
+        await sendTelegramText(runBet.html, { parseMode: "HTML" });
+      }
       return;
     }
 
