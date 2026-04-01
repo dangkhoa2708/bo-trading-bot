@@ -421,7 +421,7 @@ function buildDailyReportHeaderLinesHtml(d: DailyReportData): string[] {
     "📊 <b>Daily Report</b> <i>(GMT+7)</i>",
     `🗓️ Date: <code>${d.date}</code>`,
     "",
-    "💰 <b>Wallets</b>",
+    "💰 <b>Wallet</b>",
     ...walletLines,
     ...(perSetupPnl.length > 0 ? ["", "🪪 <b>Pancake by setup</b>", ...perSetupPnl] : []),
   ].filter((line) => line !== "");

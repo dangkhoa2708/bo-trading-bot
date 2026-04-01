@@ -146,7 +146,7 @@ export function formatLinkedPlacementsDetailHtml(
       const walletPart = pl.walletAddress
         ? `<code>${escapeHtml(pl.walletAddress.slice(0, 8))}…${escapeHtml(pl.walletAddress.slice(-4))}</code>`
         : "<i>wallet unknown</i>";
-      return `• 🥞 <code>${escapeHtml(pl.placementId.slice(0, 8))}…</code> ${escapeHtml(pl.outcome)} · ${escapeHtml(walletDisplayName((pl.setup ?? "Shared") as "Exhaustion" | "Mirror" | "Shared"))} · ${walletPart} · P&amp;L <code>${escapeHtml(pl.profitBnb)}</code> BNB`;
+      return `• 🥞 <code>${escapeHtml(pl.placementId.slice(0, 8))}…</code> ${escapeHtml(pl.outcome)} · ${escapeHtml(walletDisplayName("Shared"))} · ${walletPart} · P&amp;L <code>${escapeHtml(pl.profitBnb)}</code> BNB`;
     })
     .join("\n");
 }

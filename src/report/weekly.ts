@@ -408,7 +408,7 @@ function buildWeeklyReportHeaderLinesHtml(d: WeeklyReportData): string[] {
     "📈 <b>Weekly Report</b> <i>(GMT+7)</i>",
     `🗓️ Window: <code>${d.windowLabel}</code>`,
     "",
-    "💰 <b>Wallets</b>",
+    "💰 <b>Wallet</b>",
     ...walletLines,
     ...(perSetupPnl.length > 0 ? ["", "🪪 <b>Pancake by setup</b>", ...perSetupPnl] : []),
   ].filter((line) => line !== "");

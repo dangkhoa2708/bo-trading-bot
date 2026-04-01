@@ -10,7 +10,7 @@ export type RoutedWallet = {
   privateKey: `0x${string}`;
 };
 
-export function walletDisplayName(key: WalletKey): string {
+export function walletDisplayName(_key: WalletKey): string {
   return "Shared wallet";
 }
 
