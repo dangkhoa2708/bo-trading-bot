@@ -17,11 +17,10 @@ import {
 import { getStatusSnapshot } from "../runtime/status.js";
 import {
   buildChartTestTelegramPayload,
-  formatPrePredictionTelegramLog,
   formatSignalTelegramLog,
-  prePredictionReplyMarkup,
+  signalReplyMarkup,
 } from "../logging/verify.js";
-import { signalChartLinks, tradingViewBinanceUrl } from "../chart/externalLinks.js";
+import { tradingViewBinanceUrl } from "../chart/externalLinks.js";
 import { BACKTEST_WINDOW_DAYS, runBacktest } from "../backtest/runner.js";
 import { buildBacktestReportHtml } from "../report/backtest.js";
 import { appendSignalLog } from "../logger.js";
@@ -192,8 +191,8 @@ let commandListenerStarted = false;
 /** Plain text (no parse_mode) — shows asterisks literally in Telegram. */
 export const SIGNAL_REMINDER_ALERT_TEXT = "**Signal Alert** 🔔";
 
-// Auto-entry/auto-claim already produces multiple Telegram messages; keep pings disabled.
-const SIGNAL_REMINDER_COUNT = 0;
+// After signal + pre-prediction, send 5 short reminder pings 1s apart.
+const SIGNAL_REMINDER_COUNT = 5;
 const SIGNAL_REMINDER_GAP_MS = 1000;
 
 function sleep(ms: number): Promise<void> {
@@ -409,7 +408,6 @@ export async function startTelegramCommandListener(): Promise<void> {
       setup: FAKE_SIGNAL_SETUP,
       reason,
     });
-    const charts = signalChartLinks(config.symbol, config.interval);
     const pancakeCd = await fetchPancakePredictionBnbCountdown(config.bscRpcUrl);
     const fakeResult: StrategyResult = {
       signal: predicted,
@@ -419,25 +417,16 @@ export async function startTelegramCommandListener(): Promise<void> {
     await sendTelegramText(
       formatSignalTelegramLog(config.symbol, bar, fakeResult, signalId, {
         extraHtmlBeforeChart: formatPancakeCountdownSignalSnippetHtml(pancakeCd),
+        includePickPrompt: true,
+        baselineCloseOverride: bar.close,
       }),
       {
         parseMode: "HTML",
-        replyMarkup: charts.replyMarkup,
-      },
-    );
-    await sendTelegramText(
-      formatPrePredictionTelegramLog({
-        pair: config.symbol,
-        signalId,
-        fromOpenTime: bar.openTime,
-        baselineClose: bar.close,
-        predicted,
-        setup: FAKE_SIGNAL_SETUP,
-        reason,
-      }),
-      {
-        parseMode: "HTML",
-        replyMarkup: prePredictionReplyMarkup(bar.openTime),
+        replyMarkup: signalReplyMarkup({
+          pair: config.symbol,
+          interval: config.interval,
+          fromOpenTime: bar.openTime,
+        }),
       },
     );
     await sendSignalReminderPings();
@@ -505,6 +494,57 @@ export async function startTelegramCommandListener(): Promise<void> {
       [`🧪 <b>Placement test</b> <code>/placement ${label}</code>`, "", runBet.html].join("\n"),
       { parse_mode: "HTML" },
     );
+  });
+  b.command("setAmount", async (ctx) => {
+    const chatId = String(ctx.chat?.id ?? "");
+    if (chatId !== config.telegramChatId) {
+      await ctx.reply("Unauthorized chat for this bot instance.");
+      return;
+    }
+    const text = ctx.message && "text" in ctx.message ? ctx.message.text.trim() : "";
+    const tokens = text.split(/\s+/).filter(Boolean);
+    if (tokens.length < 2) {
+      await ctx.reply(
+        [
+          "💸 <b>/setAmount</b> — update live Pancake bet size",
+          "",
+          "Usage:",
+          "• <code>/setAmount 0.005</code>",
+          "",
+          `Current amount: <code>${formatEther(config.pancakePredictionBetWei)}</code> BNB`,
+          "<i>Applies to pre-prediction taps and strategy-sized placements in this running bot process.</i>",
+        ].join("\n"),
+        { parse_mode: "HTML" },
+      );
+      return;
+    }
+    const rawAmount = tokens[1]!;
+    try {
+      const nextWei = parseEther(rawAmount);
+      if (nextWei <= 0n) {
+        await ctx.reply("Amount must be greater than 0 BNB.");
+        return;
+      }
+      config.pancakePredictionBetWei = nextWei;
+      await ctx.reply(
+        [
+          "✅ <b>Placement amount updated</b>",
+          "",
+          `New amount: <code>${formatEther(nextWei)}</code> BNB`,
+          "<i>This change is live immediately for this running bot process.</i>",
+        ].join("\n"),
+        { parse_mode: "HTML" },
+      );
+    } catch {
+      await ctx.reply(
+        [
+          "❌ <b>Invalid amount</b>",
+          "",
+          "Use a decimal BNB amount like <code>0.005</code> or <code>0.01</code>.",
+        ].join("\n"),
+        { parse_mode: "HTML" },
+      );
+    }
   });
   b.command("backtest", async (ctx) => {
     const chatId = String(ctx.chat?.id ?? "");

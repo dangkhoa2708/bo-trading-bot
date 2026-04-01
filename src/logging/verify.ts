@@ -1,5 +1,12 @@
 import type { Candle, StrategyResult } from "../types.js";
-import { signalChartLinks, type SignalChartLinks } from "../chart/externalLinks.js";
+import {
+  PANCAKE_PREDICTION_BNB_PAGE_URL,
+} from "../pancakeswap/predictionCountdown.js";
+import {
+  signalChartLinks,
+  tradingViewBinanceUrl,
+  type SignalChartLinks,
+} from "../chart/externalLinks.js";
 import { fmtGmt7WithZoneLabel } from "../time/utils.js";
 import {
   candleColor,
@@ -87,22 +94,29 @@ export function formatSignalTelegramLog(
   c: Candle,
   result: StrategyResult,
   signalId: string,
-  options?: { extraHtmlBeforeChart?: string },
+  options?: {
+    extraHtmlBeforeChart?: string;
+    includePickPrompt?: boolean;
+    baselineCloseOverride?: number;
+  },
 ): string {
   const icon = result.signal === "UP" ? "🟢" : result.signal === "DOWN" ? "🔴" : "⚪️";
   const timeText = fmtGmt7WithZoneLabel(c.openTime);
   const conf = setupConfidenceHtmlLine(result.setup);
+  const baselineClose = options?.baselineCloseOverride ?? c.close;
   return [
     `${icon} <b>Signal</b> <code>${escapeHtml(result.signal)}</code> <b>${escapeHtml(result.setup)}</b>  <code>${escapeHtml(signalId)}</code>`,
     ...(conf !== null ? [conf] : []),
     `<b>Pair</b>: <code>${escapeHtml(pair)}</code>`,
     `<b>Candle open</b>: <code>${escapeHtml(timeText)}</code>`,
     `<b>Price</b>: <code>${fmtPrice(c.close)}</code>`,
+    `<b>Baseline close</b>: <code>${fmtPrice(baselineClose)}</code>`,
     `<b>ID</b>: <code>${escapeHtml(signalId)}</code>`,
     `<b>Reason</b>: <i>${escapeHtml(result.reason)}</i>`,
     ...(options?.extraHtmlBeforeChart ? [options.extraHtmlBeforeChart] : []),
-    "",
-    `${drawTelegramVerticalCandle(c)}`,
+    ...(options?.includePickPrompt
+      ? ["", "<i>Review: tap your expected next close vs baseline.</i>"]
+      : []),
   ].join("\n");
 }
 
@@ -166,6 +180,41 @@ export function prePredictionReplyMarkup(fromOpenTime: number): {
         {
           text: "👇 My pick: DOWN",
           callback_data: `pick:${fromOpenTime}:D`,
+        },
+      ],
+    ],
+  };
+}
+
+export function signalReplyMarkup(args: {
+  pair: string;
+  interval: string;
+  fromOpenTime: number;
+}): {
+  inline_keyboard: Array<
+    Array<
+      | { text: string; url: string }
+      | { text: string; callback_data: string }
+    >
+  >;
+} {
+  return {
+    inline_keyboard: [
+      [
+        { text: "⏱ Countdown", url: PANCAKE_PREDICTION_BNB_PAGE_URL },
+        {
+          text: "📊 TradingView",
+          url: tradingViewBinanceUrl(args.pair, args.interval),
+        },
+      ],
+      [
+        {
+          text: "👆 My pick: UP",
+          callback_data: `pick:${args.fromOpenTime}:U`,
+        },
+        {
+          text: "👇 My pick: DOWN",
+          callback_data: `pick:${args.fromOpenTime}:D`,
         },
       ],
     ],

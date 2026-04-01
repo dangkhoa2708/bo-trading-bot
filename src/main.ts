@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { config } from "./config.js";
-import { signalChartLinks } from "./chart/externalLinks.js";
 import { subscribeKline } from "./binance/candleStream.js";
 import { fetchKlines } from "./binance/rest.js";
 import { appendPredictionLog, appendSignalLog } from "./logger.js";
@@ -8,9 +7,8 @@ import { SignalDispatcher } from "./signal/dispatcher.js";
 import { evaluate } from "./strategy/engine.js";
 import type { Candle } from "./types.js";
 import {
-  formatPrePredictionTelegramLog,
-  prePredictionReplyMarkup,
   formatSignalTelegramLog,
+  signalReplyMarkup,
   formatVerifyLog,
 } from "./logging/verify.js";
 import {
@@ -25,7 +23,6 @@ import { hasRecordedPancakeBetForPrediction } from "./pancakeswap/hasBetForPredi
 import { pullFakeSignalIfQueued } from "./prediction/injectedFakeSignal.js";
 import { logRuntime } from "./logging/runtime.js";
 import { startPancakeOutcomePoller } from "./pancakeswap/outcomePoller.js";
-import { autoPlacePancakeBetForSignal } from "./pancakeswap/autoPlacement.js";
 import { hasAnyConfiguredPancakeWallet } from "./pancakeswap/setupWallets.js";
 import {
   sendSignalReminderPings,
@@ -158,7 +155,6 @@ async function main(): Promise<void> {
     ) {
       const predictionId = randomUUID();
       const signalId = `${c.openTime}-${result.signal}-${result.setup}`;
-      const charts = signalChartLinks(config.symbol, config.interval);
       const pancakeCd = await fetchPancakePredictionBnbCountdown(config.bscRpcUrl);
       await logRuntime(
         `[signal] id=${signalId} ${new Date(c.openTime).toISOString()} ${result.signal} ${result.setup} — ${result.reason}`,
@@ -166,9 +162,15 @@ async function main(): Promise<void> {
         {
           text: formatSignalTelegramLog(config.symbol, c, result, signalId, {
             extraHtmlBeforeChart: formatPancakeCountdownSignalSnippetHtml(pancakeCd),
+            includePickPrompt: true,
+            baselineCloseOverride: c.close,
           }),
           parseMode: "HTML",
-          replyMarkup: charts.replyMarkup,
+          replyMarkup: signalReplyMarkup({
+            pair: config.symbol,
+            interval: config.interval,
+            fromOpenTime: c.openTime,
+          }),
         },
       );
       pendingPrediction = {
@@ -184,23 +186,6 @@ async function main(): Promise<void> {
         predictionId,
         setup: result.setup,
       });
-      await logRuntime(
-        `[pre-prediction] id=${signalId} from=${new Date(c.openTime).toISOString()} predict_next=${result.signal} setup=${result.setup} reason=${result.reason}`,
-        "log",
-        {
-          text: formatPrePredictionTelegramLog({
-            pair: config.symbol,
-            signalId,
-            fromOpenTime: c.openTime,
-            baselineClose: c.close,
-            predicted: result.signal,
-            setup: result.setup,
-            reason: result.reason,
-          }),
-          parseMode: "HTML",
-          replyMarkup: prePredictionReplyMarkup(c.openTime),
-        },
-      );
       await sendSignalReminderPings();
 
       appendSignalLog({
@@ -214,35 +199,6 @@ async function main(): Promise<void> {
         reason: result.reason,
       });
 
-      // Auto placement for Exhaustion + Mirror signals (no manual pick required).
-      const placed = await autoPlacePancakeBetForSignal({
-        signalId,
-        predictionId,
-        direction: result.signal,
-        setup: result.setup,
-      });
-      if (placed.outcome === "dryrun") {
-        await logRuntime(`[pancake-auto] ${placed.plainText}`, "log", {
-          text: `<b>Pancake auto-placement</b> <i>(dry-run)</i>\n<code>${placed.plainText}</code>`,
-          parseMode: "HTML",
-        });
-      } else if (placed.outcome === "not_configured") {
-        await logRuntime("[pancake-auto] not configured", "warn", {
-          text: [
-            "⚠️ <b>Pancake auto-placement skipped</b>",
-            "",
-            "Missing a routed setup wallet key (or stake is disabled).",
-            "Stake is configured in <code>src/config.ts</code> (default: <code>0.005</code> BNB).",
-          ].join("\n"),
-          parseMode: "HTML",
-        });
-      } else if (placed.outcome === "result") {
-        await logRuntime(
-          `[pancake-auto] signal=${signalId} direction=${result.signal}`,
-          "log",
-          { text: placed.html, parseMode: "HTML" },
-        );
-      }
     } else if (!decision.emit && result.signal !== "NONE") {
       await logRuntime(
         `[skip] ${new Date(c.openTime).toISOString()} ${result.signal} — ${decision.reason}`,
