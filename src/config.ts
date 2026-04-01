@@ -300,7 +300,7 @@ const defaults: Omit<BotConfig, "telegramBotToken" | "telegramChatId"> = {
   bscWalletPrivateKey: "",
   exhaustionBscWalletPrivateKey: "",
   mirrorBscWalletPrivateKey: "",
-  pancakePredictionBetWei: parseEther("0.005"),
+  pancakePredictionBetWei: parseEther("0.01"),
 };
 
 export const config: BotConfig = {
